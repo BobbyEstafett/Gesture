@@ -6,6 +6,28 @@ const ctx = canvasElement.getContext('2d');
 let smoothDist = 0; // Distance lissée pour éviter les saccades
 let rotationAngle = 0; // Pour l'effet de rotation progressive
 
+// --- FONCTION DE DEBUG : DESSINER LA MAIN ---
+function drawHandDebug(landmarks) {
+    // On définit un style semi-transparent pour ne pas masquer le tunnel
+    const connectionsStyle = {color: 'rgba(255, 255, 255, 0.2)', lineWidth: 2};
+    const landmarksStyle = {color: 'rgba(0, 255, 200, 0.4)', lineWidth: 1, radius: 3};
+
+    // drawConnectors et drawLandmarks sont fournis par drawing_utils.js
+    drawConnectors(ctx, landmarks, HAND_CONNECTIONS, connectionsStyle);
+    drawLandmarks(ctx, landmarks, landmarksStyle);
+
+    // Optionnel : Surligner spécifiquement le pouce (4) et l'index (8)
+    const thumb = landmarks[4];
+    const index = landmarks[8];
+    
+    ctx.fillStyle = 'rgba(255, 255, 0, 0.6)'; // Jaune pour les points actifs
+    ctx.beginPath();
+    ctx.arc(thumb.x * canvasElement.width, thumb.y * canvasElement.height, 8, 0, 2 * Math.PI);
+    ctx.arc(index.x * canvasElement.width, index.y * canvasElement.height, 8, 0, 2 * Math.PI);
+    ctx.fill();
+}
+
+// --- FONCTION DE DESSIN DU TUNNEL ---
 function drawTunnel(count) {
     const centerX = canvasElement.width / 2;
     const centerY = canvasElement.height / 2;
@@ -15,41 +37,32 @@ function drawTunnel(count) {
     for (let i = 0; i < count; i++) {
         ctx.save();
         ctx.translate(centerX, centerY);
-        
-        // Effet de rotation : chaque rectangle tourne un peu plus que le précédent
-        // On multiplie par smoothDist pour que ça tourne plus quand on écarte les doigts
         ctx.rotate(i * 0.02 + rotationAngle);
         
-        // Perspective exponentielle (plus réaliste que linéaire)
         const scale = Math.pow(0.96, i);
         const w = canvasElement.width * scale;
         const h = canvasElement.height * scale;
         
-        // Couleur : Dégradé du Turquoise (180) vers le Bleu/Violet
         const hue = 180 + (i * 2);
-        const light = 50 - (i / count) * 40; // Assombrit le fond du tunnel
+        const light = 50 - (i / count) * 40;
         ctx.strokeStyle = `hsl(${hue}, 100%, ${light}%)`;
         
-        // Opacité : s'estompe vers le fond
         ctx.globalAlpha = 1 - (i / count);
         
-        // Dessin du rectangle (centré grâce au translate)
         ctx.strokeRect(-w / 2, -h / 2, w, h);
         
         ctx.restore();
     }
-    
-    // Fait tourner le tunnel doucement en continu
     rotationAngle += 0.005;
 }
 
+// --- BOUCLE PRINCIPALE ---
 function onResults(results) {
     // Adapter le canvas à la fenêtre
     canvasElement.width = window.innerWidth;
     canvasElement.height = window.innerHeight;
 
     // EFFET DE TRAÎNÉE (Motion Blur)
-    // Au lieu de tout effacer, on dessine un rectangle noir très transparent
     ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
     ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
 
@@ -58,20 +71,18 @@ function onResults(results) {
         const thumb = hand[4];
         const index = hand[8];
 
-        // Distance brute (0.0 à 1.0 environ)
+        // 1. DESSINER LA RÉPRESENTATION DE LA MAIN (DEBUG)
+        // On le fait AVANT le tunnel pour qu'il soit en arrière-plan
+        drawHandDebug(hand);
+
+        // 2. CALCUL ET DESSIN DU TUNNEL
         const rawDist = Math.sqrt(Math.pow(index.x - thumb.x, 2) + Math.pow(index.y - thumb.y, 2));
-        
-        // LISSAGE (Interpolation Linéaire)
-        // On ne prend que 10% de la nouvelle valeur à chaque frame
         smoothDist += (rawDist - smoothDist) * 0.1;
-        
-        // On mappe la distance sur le nombre de rectangles (max 80 pour la performance)
         const numRects = Math.floor(smoothDist * 200) + 5;
         
         drawTunnel(numRects);
     } else {
-        // Si aucune main n'est détectée, on continue d'afficher le tunnel
-        // avec la dernière distance connue, mais on le réduit doucement
+        // Mode autonome si pas de main
         smoothDist *= 0.98;
         if (smoothDist > 0.01) drawTunnel(Math.floor(smoothDist * 200) + 5);
     }
@@ -101,5 +112,5 @@ const camera = new Camera(videoElement, {
 });
 
 camera.start()
-  .then(() => console.log("Système prêt !"))
+  .then(() => console.log("Système prêt avec Debug Visuel !"))
   .catch(e => console.error("Erreur de caméra :", e));
