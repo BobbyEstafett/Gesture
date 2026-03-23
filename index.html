@@ -3,27 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Hand Controller - Final</title>
+    <title>Dual Hand 3D Controller</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; color: #00ffcc; font-family: 'Courier New', Courier, monospace; }
         #canvas-container { width: 100vw; height: 100vh; }
         .input_video { display: none; }
         #ui-layer {
             position: absolute; top: 20px; left: 20px; z-index: 10;
-            background: rgba(0,0,0,0.5); padding: 10px; border: 1px solid #00ffcc;
-            pointer-events: none; line-height: 1.5;
+            background: rgba(0,0,0,0.6); padding: 15px; border: 1px solid #00ffcc;
+            pointer-events: none; line-height: 1.6; font-size: 13px;
         }
+        .stat-val { color: white; font-weight: bold; }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
     <div id="ui-layer">
-        <div>SYSTEM: ONLINE</div>
-        <div id="stat-hand">MAIN: RECHERCHE...</div>
-        <div id="stat-zoom">ZOOM: --</div>
-        <div id="stat-state">ETAT: --</div>
+        <div>SYSTEM: <span class="stat-val">ONLINE</span></div>
+        <div id="stat-mains">MAINS: <span class="stat-val">0</span></div>
+        <div id="stat-zoom">ZOOM (D): <span class="stat-val">--</span></div>
+        <div id="stat-etat">ETAT (G): <span class="stat-val">--</span></div>
     </div>
     <video class="input_video" playsinline></video>
     <div id="canvas-container"></div>
