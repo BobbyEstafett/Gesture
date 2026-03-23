@@ -116,49 +116,43 @@ function init3D() {
 // --- LOGIQUE MEDIAPIPE (DÉTECTION IA) ---
 // ==========================================
 function onResults(results) {
-    // Cacher les squelettes par défaut au début de chaque frame
-    jointsLeft.forEach(j => j.visible = false);
-    bonesLeft.forEach(b => b.visible = false);
-    jointsRight.forEach(j => j.visible = false);
-    bonesRight.forEach(b => b.visible = false);
+    // Cacher les squelettes par défaut
+    [...jointsLeft, ...bonesLeft, ...jointsRight, ...bonesRight].forEach(obj => obj.visible = false);
+
+    // Sécurité : On vérifie si les éléments UI existent
+    const valMains = statMains ? statMains.querySelector('.stat-val') : null;
+    const valZoom = statZoom ? statZoom.querySelector('.stat-val') : null;
+    const valEtat = statEtat ? statEtat.querySelector('.stat-val') : null;
 
     if (results.multiHandLandmarks && results.multiHandedness) {
-        const nMains = results.multiHandLandmarks.length;
-        statMains.querySelector('.stat-val').innerText = nMains;
+        if (valMains) valMains.innerText = results.multiHandLandmarks.length;
 
-        for (let i = 0; i < nMains; i++) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
             const landmarks = results.multiHandLandmarks[i];
+            // "Left" et "Right" sont inversés à cause de l'effet miroir de la webcam
             const isRightHand = results.multiHandedness[i].label === 'Right';
 
-            // --- MISE À JOUR VISUELLE (SQUELETTE RESPECTIF) ---
             if (isRightHand) {
                 updateHandVisuals(landmarks, jointsRight, bonesRight);
-                
-                // --- ACTION MAIN DROITE : ZOOM (PINCE) ---
                 const dx = landmarks[8].x - landmarks[4].x;
                 const dy = landmarks[8].y - landmarks[4].y;
                 rightPinchValue = Math.sqrt(dx*dx + dy*dy);
-                statZoom.querySelector('.stat-val').innerText = (rightPinchValue * 10).toFixed(2);
+                if (valZoom) valZoom.innerText = (rightPinchValue * 10).toFixed(2);
                 
-                // Rotation facultative de l'objet basée sur la main droite
                 object3D.rotation.y = (landmarks[9].x - 0.5) * 4;
                 object3D.rotation.x = (landmarks[9].y - 0.5) * 2;
-
             } else {
                 updateHandVisuals(landmarks, jointsLeft, bonesLeft);
-                
-                // --- ACTION MAIN GAUCHE : DEFORMATION (POING FERMÉ) ---
-                // Distance Wrist (0) - MiddleFingerTip (12)
                 const dPoing = Math.sqrt(
                     Math.pow(landmarks[12].x - landmarks[0].x, 2) +
                     Math.pow(landmarks[12].y - landmarks[0].y, 2)
                 );
-                isLeftHandClosed = dPoing < 0.35; // Seuil de détection
-                statEtat.querySelector('.stat-val').innerText = isLeftHandClosed ? "FERME" : "OUVERT";
+                isLeftHandClosed = dPoing < 0.35;
+                if (valEtat) valEtat.innerText = isLeftHandClosed ? "FERME" : "OUVERT";
             }
         }
     } else {
-        statMains.querySelector('.stat-val').innerText = "0";
+        if (valMains) valMains.innerText = "0";
     }
 }
 
