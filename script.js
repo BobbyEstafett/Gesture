@@ -25,12 +25,13 @@ function init3D() {
     scene.add(pointLight);
     scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-    // SHADER "PURE CRYSTAL" - VERSION FIXÉE
+    // SHADER "PURE CRYSTAL" - VERSION FIXÉE (SANS ESPACES AVANT EXTENSION)
     crystalMaterial = new THREE.ShaderMaterial({
         uniforms: {
             time: { value: 0 },
             deformation: { value: 0 },
-            lightPos: { value: new THREE.Vector3(0, 0, 3) }
+            lightPos: { value: new THREE.Vector3(0, 0, 3) },
+            uTexture: { value: new THREE.Texture() }
         },
         vertexShader: `
             varying vec3 vNormal;
@@ -56,13 +57,12 @@ function init3D() {
                 gl_Position = projectionMatrix * viewMatrix * worldPos;
             }
         `,
-        fragmentShader: `
-            #extension GL_OES_standard_derivatives : enable
+        fragmentShader: `#extension GL_OES_standard_derivatives : enable
             precision highp float;
-
             uniform float time;
             uniform float deformation;
             uniform vec3 lightPos;
+            uniform sampler2D uTexture;
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
 
@@ -76,16 +76,13 @@ function init3D() {
                 vec3 viewDir = normalize(cameraPosition - vWorldPosition);
                 vec3 lightDir = normalize(lightPos - vWorldPosition);
                 
-                // Calcul des facettes dures
                 vec3 fdx = dFdx(vWorldPosition);
                 vec3 fdy = dFdy(vWorldPosition);
                 vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // Réfraction interne
                 vec3 refr = refract(-viewDir, faceNormal, 0.88);
                 vec3 crystalCol = getFakeEnv(refr);
 
-                // Scintillement
                 float spec = pow(max(dot(reflect(-lightDir, faceNormal), viewDir), 0.0), 64.0);
                 float fresnel = pow(1.0 - max(dot(faceNormal, viewDir), 0.0), 3.0);
                 
@@ -95,7 +92,7 @@ function init3D() {
 
                 gl_FragColor = vec4(finalCol, 0.95);
             }
-        `,
+        `.trim(),
         transparent: true,
         extensions: { derivatives: true }
     });
@@ -103,7 +100,6 @@ function init3D() {
     const loader = new THREE.GLTFLoader();
     loader.load('crystal.glb', (gltf) => {
         object3D = gltf.scene;
-        // Centrage automatique
         const box = new THREE.Box3().setFromObject(object3D);
         const center = box.getCenter(new THREE.Vector3());
         object3D.position.sub(center);
@@ -117,13 +113,11 @@ function init3D() {
         object3D.scale.set(1.5, 1.5, 1.5);
         scene.add(object3D);
     }, undefined, (error) => {
-        // En cas d'erreur (comme ta 404), on lance la sphère
         console.warn("Erreur GLB, chargement de la sphère facétisée.");
         object3D = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 3), crystalMaterial);
         scene.add(object3D);
     });
 
-    // Points des mains
     const jGeo = new THREE.SphereGeometry(0.04, 8, 8);
     for (let i = 0; i < 21; i++) {
         let sL = new THREE.Mesh(jGeo, new THREE.MeshBasicMaterial({color:0xff00cc})); sL.visible = false; jointsLeft.push(sL); scene.add(sL);
@@ -157,7 +151,7 @@ function animate() {
     smoothDeformation += ((isLeftHandClosed ? 1.0 : 0.0) - smoothDeformation) * 0.05;
     if (pointLight) {
         pointLight.position.lerp(lightTargetPos, 0.1);
-        crystalMaterial.uniforms.lightPos.value.copy(pointLight.position);
+        if(crystalMaterial) crystalMaterial.uniforms.lightPos.value.copy(pointLight.position);
     }
     crystalMaterial.uniforms.time.value += 0.015;
     crystalMaterial.uniforms.deformation.value = smoothDeformation;
