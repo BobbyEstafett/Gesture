@@ -7,7 +7,7 @@ const statEtat = document.getElementById('stat-etat');
 let scene, camera, renderer, object3D, voronoiShaderMaterial;
 let isLeftHandClosed = false;
 let smoothDeformation = 0;
-let rightPinchValue = 0.15;
+let rightPinchValue = 0.1; // Distance initiale neutre
 let smoothScale = 1.0;
 
 // Squelettes 3D
@@ -28,7 +28,7 @@ function init3D() {
     renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    // 1. DÉFINITION DU SHADER (Le matériau magique)
+    // 1. DÉFINITION DU SHADER
     voronoiShaderMaterial = new THREE.ShaderMaterial({
         uniforms: {
             time: { value: 0 },
@@ -64,30 +64,22 @@ function init3D() {
         wireframe: true
     });
 
-    // 2. CHARGEMENT DE TON OBJET 3D (.glb)
+    // 2. CHARGEMENT DE L'OBJET GLB
     const loader = new THREE.GLTFLoader();
-    // REMPLACE 'ton_objet.glb' PAR LE NOM DE TON FICHIER DANS TON REPO GITHUB
     loader.load('conifer_cone.glb', function (gltf) {
         object3D = gltf.scene;
-        
-        // Appliquer le shader à tous les enfants du modèle
         object3D.traverse((child) => {
-            if (child.isMesh) {
-                child.material = voronoiShaderMaterial;
-            }
+            if (child.isMesh) child.material = voronoiShaderMaterial;
         });
-        
         scene.add(object3D);
-        console.log("Modèle 3D chargé avec succès !");
+        console.log("Modèle chargé !");
     }, undefined, function (error) {
-        console.error("Erreur de chargement du modèle :", error);
-        // Backup : Si le fichier n'est pas trouvé, on crée une sphère pour ne pas avoir un écran vide
-        const fallbackGeo = new THREE.IcosahedronGeometry(1.5, 32);
-        object3D = new THREE.Mesh(fallbackGeo, voronoiShaderMaterial);
+        console.error("Erreur chargement, fallback sphère", error);
+        object3D = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 32), voronoiShaderMaterial);
         scene.add(object3D);
     });
 
-    // 3. CRÉATION DES MAINS VISUELLES
+    // 3. CRÉATION DES MAINS
     const jointGeo = new THREE.SphereGeometry(0.05, 8, 8);
     const matL = new THREE.MeshBasicMaterial({ color: 0xff00cc, transparent: true, opacity: 0.5 });
     const matR = new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.5 });
@@ -107,13 +99,14 @@ function init3D() {
 }
 
 // ==========================================
-// --- LOGIQUE IA (MEDIAPIPE) ---
+// --- LOGIQUE IA ---
 // ==========================================
 function onResults(results) {
     [...jointsLeft, ...bonesLeft, ...jointsRight, ...bonesRight].forEach(obj => obj.visible = false);
 
     if (results.multiHandLandmarks && results.multiHandedness) {
-        statMains.querySelector('.stat-val').innerText = results.multiHandLandmarks.length;
+        const spanMains = statMains.querySelector('.stat-val');
+        if(spanMains) spanMains.innerText = results.multiHandLandmarks.length;
 
         for (let i = 0; i < results.multiHandLandmarks.length; i++) {
             const landmarks = results.multiHandLandmarks[i];
@@ -121,11 +114,19 @@ function onResults(results) {
 
             if (isRightHand) {
                 updateHandVisuals(landmarks, jointsRight, bonesRight);
-                const dx = landmarks[8].x - landmarks[4].x;
-                const dy = landmarks[8].y - landmarks[4].y;
-                rightPinchValue = Math.sqrt(dx*dx + dy*dy);
-                statZoom.querySelector('.stat-val').innerText = (rightPinchValue * 10).toFixed(2);
-                
+
+                // LOGIQUE WORLD COORDINATES (STABLE)
+                if (results.multiHandWorldLandmarks && results.multiHandWorldLandmarks[i]) {
+                    const worldLM = results.multiHandWorldLandmarks[i];
+                    const dx = worldLM[8].x - worldLM[4].x;
+                    const dy = worldLM[8].y - worldLM[4].y;
+                    const dz = worldLM[8].z - worldLM[4].z;
+                    rightPinchValue = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                    
+                    const spanZoom = statZoom.querySelector('.stat-val');
+                    if(spanZoom) spanZoom.innerText = (rightPinchValue * 100).toFixed(1);
+                }
+
                 if (object3D) {
                     object3D.rotation.y = (landmarks[9].x - 0.5) * 4;
                     object3D.rotation.x = (landmarks[9].y - 0.5) * 2;
@@ -134,7 +135,8 @@ function onResults(results) {
                 updateHandVisuals(landmarks, jointsLeft, bonesLeft);
                 const dPoing = Math.sqrt(Math.pow(landmarks[12].x - landmarks[0].x, 2) + Math.pow(landmarks[12].y - landmarks[0].y, 2));
                 isLeftHandClosed = dPoing < 0.35;
-                statEtat.querySelector('.stat-val').innerText = isLeftHandClosed ? "FERME" : "OUVERT";
+                const spanEtat = statEtat.querySelector('.stat-val');
+                if(spanEtat) spanEtat.innerText = isLeftHandClosed ? "FERME" : "OUVERT";
             }
         }
     }
@@ -158,7 +160,9 @@ function animate() {
     requestAnimationFrame(animate);
 
     smoothDeformation += ((isLeftHandClosed ? 1.0 : 0.0) - smoothDeformation) * 0.1;
-    const targetScale = Math.max(0.2, 0.5 + (rightPinchValue * 12));
+    
+    // On multiplie par 25 car les coordonnées World sont en mètres (pincé ~ 0.02, ouvert ~ 0.12)
+    const targetScale = Math.max(0.2, rightPinchValue * 25);
     smoothScale += (targetScale - smoothScale) * 0.1;
 
     if (object3D) {
