@@ -3,22 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Deformer with Hand Visuals</title>
+    <title>3D Hand Deformer</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        body { margin: 0; overflow: hidden; background: #000; color: white; }
+        #canvas-container { width: 100vw; height: 100vh; }
         .input_video { display: none; }
+        #status { position: absolute; top: 10px; left: 10px; z-index: 10; font-family: sans-serif; }
     </style>
-
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
+    <div id="status">Initialisation...</div>
     <video class="input_video" playsinline></video>
     <div id="canvas-container"></div>
-    
     <script src="script.js"></script>
 </body>
 </html>
