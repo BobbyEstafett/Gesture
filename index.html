@@ -2,30 +2,24 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Dual Hand 3D Controller</title>
-            <style>
-                body { margin: 0; overflow: hidden; background: #000; color: #00ffcc; font-family: 'Courier New', Courier, monospace; }
-                #canvas-container { width: 100vw; height: 100vh; }
-                .input_video { display: none; }
-                #ui-layer {
-                    position: absolute; top: 20px; left: 20px; z-index: 10;
-                    background: rgba(0,0,0,0.6); padding: 15px; border: 1px solid #00ffcc;
-                    pointer-events: none; line-height: 1.6; font-size: 13px;
-                }
-                .stat-val { color: white; font-weight: bold; }
-            </style>
-            <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-            <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hologram Controller v2</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; color: #00ffcc; font-family: monospace; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        .input_video { display: none; }
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.7); padding: 15px; border: 1px solid #00ffcc; pointer-events: none; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
-    <div id="ui-layer">
-        <div>SYSTEM: <span id="status-val" style="color: white; font-weight: bold;">ONLINE</span></div>
-        <div id="stat-mains">MAINS: <span class="stat-val">0</span></div>
-        <div id="stat-zoom">ZOOM (D): <span class="stat-val">--</span></div>
-        <div id="stat-etat">ETAT (G): <span class="stat-val">--</span></div>
+    <div id="ui">
+        <div>STATUS: <span style="color:white">CONNECTED</span></div>
+        <div>L-HAND: <span id="l-stat">--</span></div>
+        <div>R-HAND: <span id="r-stat">--</span></div>
     </div>
     <video class="input_video" playsinline></video>
     <div id="canvas-container"></div>

@@ -1,13 +1,16 @@
 // --- CONFIGURATION ---
 const videoElement = document.querySelector('.input_video');
-const statMains = document.getElementById('stat-mains');
-const statZoom = document.getElementById('stat-zoom'); // Deviendra "LUMIÈRE"
-const statEtat = document.getElementById('stat-etat'); // Deviendra "PROXIMITÉ"
+const lStat = document.getElementById('l-stat');
+const rStat = document.getElementById('r-stat');
 
 let scene, camera, renderer, object3D, voronoiShaderMaterial, pointLight;
-let handDistToCenter = 0; // Pour l'aimant
-let handZDepth = 0;       // Pour la croissance
+
+// Variables d'interaction (Valeurs par défaut stables)
+let handDistToCenter = 1.0;
+let handZDepth = 0.0;
 let lightPos = { x: 0, y: 0 };
+let smoothDeformation = 0;
+let smoothOpacity = 1.0;
 
 // Squelettes 3D
 let jointsLeft = [], bonesLeft = [];
@@ -21,14 +24,16 @@ function init3D() {
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio); // Optionnel pour la netteté
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
     // 1. LUMIÈRES
     pointLight = new THREE.PointLight(0x00ffff, 2, 20);
+    pointLight.position.set(0, 0, 3);
     scene.add(pointLight);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
-    // 2. SHADER DYNAMIQUE
+    // 2. SHADER
     voronoiShaderMaterial = new THREE.ShaderMaterial({
         uniforms: {
             time: { value: 0 },
@@ -39,7 +44,6 @@ function init3D() {
             uniform float time;
             uniform float deformation;
             varying float vNoise;
-            varying vec3 vNormal;
             float hash(float n) { return fract(sin(n) * 43758.5453); }
             float noise(vec3 x) {
                 vec3 p = floor(x); vec3 f = fract(x);
@@ -49,8 +53,7 @@ function init3D() {
                            mix(mix(hash(n+113.0),hash(n+114.0),f.x),mix(hash(n+170.0),hash(n+171.0),f.x),f.y),f.z);
             }
             void main() {
-                vNormal = normal;
-                vNoise = noise(position * 2.0 + time * 0.5);
+                vNoise = noise(position * 2.5 + time * 0.5);
                 vec3 newPos = position + normal * vNoise * deformation * 1.5;
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
             }
@@ -62,8 +65,7 @@ function init3D() {
             void main() {
                 vec3 col1 = vec3(0.0, 1.0, 0.8);
                 vec3 col2 = vec3(0.5, 0.0, 1.0);
-                vec3 finalCol = mix(col1, col2, deformation);
-                gl_FragColor = vec4(finalCol, opacity);
+                gl_FragColor = vec4(mix(col1, col2, deformation), opacity);
             }
         `,
         transparent: true,
@@ -73,23 +75,45 @@ function init3D() {
     // 3. CHARGEMENT MODÈLE
     const loader = new THREE.GLTFLoader();
     loader.load('conifer_cone.glb', (gltf) => {
-        object3D = gltf.scene;
-        object3D.traverse(c => { if(c.isMesh) c.material = voronoiShaderMaterial; });
-        object3D.scale.set(1.5, 1.5, 1.5);
+        const model = gltf.scene;
+        model.traverse(c => { if(c.isMesh) c.material = voronoiShaderMaterial; });
+        model.scale.set(1.5, 1.5, 1.5);
+        object3D = model; // On n'assigne object3D qu'une fois chargé
+        scene.add(object3D);
+    }, undefined, (err) => {
+        console.error("Fichier non trouvé, utilisation du fallback.");
+        object3D = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 32), voronoiShaderMaterial);
         scene.add(object3D);
     });
 
-    // 4. MAINS VISUELLES
-    const jGeo = new THREE.SphereGeometry(0.04, 8, 8);
+    // 4. SQUELETTES
+    const jGeo = new THREE.SphereGeometry(0.05, 8, 8);
+    const matL = new THREE.MeshBasicMaterial({color:0xff00cc});
+    const matR = new THREE.MeshBasicMaterial({color:0x00ffcc});
+    
     for (let i = 0; i < 21; i++) {
-        let sL = new THREE.Mesh(jGeo, new THREE.MeshBasicMaterial({color:0xff00cc})); jointsLeft.push(sL); scene.add(sL);
-        let sR = new THREE.Mesh(jGeo, new THREE.MeshBasicMaterial({color:0x00ffcc})); jointsRight.push(sR); scene.add(sR);
+        let sL = new THREE.Mesh(jGeo, matL); sL.visible = false; jointsLeft.push(sL); scene.add(sL);
+        let sR = new THREE.Mesh(jGeo, matR); sR.visible = false; jointsRight.push(sR); scene.add(sR);
     }
+    
+    const boneMat = new THREE.LineBasicMaterial({color:0xffffff, opacity:0.1, transparent:true});
     CONNECTIONS.forEach(() => {
-        let b = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({color:0xffffff, opacity:0.2, transparent:true}));
-        bonesLeft.push(b); scene.add(b);
-        let b2 = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({color:0xffffff, opacity:0.2, transparent:true}));
-        bonesRight.push(b2); scene.add(b2);
+        let bL = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), boneMat);
+        let bR = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), boneMat);
+        bL.visible = false; bR.visible = false; bonesLeft.push(bL); bonesRight.push(bR); scene.add(bL); scene.add(bR);
+    });
+}
+
+function updateHandVisuals(lm, jList, bList) {
+    lm.forEach((p, i) => {
+        jList[i].position.set((p.x-0.5)*8, -(p.y-0.5)*6, -p.z*5);
+        jList[i].visible = true;
+    });
+    CONNECTIONS.forEach((c, i) => {
+        const p1 = jList[c[0]].position;
+        const p2 = jList[c[1]].position;
+        bList[i].geometry.setFromPoints([p1, p2]);
+        bList[i].visible = true;
     });
 }
 
@@ -97,69 +121,56 @@ function onResults(results) {
     [...jointsLeft, ...bonesLeft, ...jointsRight, ...bonesRight].forEach(o => o.visible = false);
     
     if (results.multiHandLandmarks) {
-        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-            const lm = results.multiHandLandmarks[i];
+        results.multiHandLandmarks.forEach((lm, i) => {
             const isRight = results.multiHandedness[i].label === 'Right';
-
             if (isRight) {
-                updateHand(lm, jointsRight, bonesRight);
-                // INTERACTION 2 & 3 : Lumière (X,Y) et Croissance (Z)
+                updateHandVisuals(lm, jointsRight, bonesRight);
                 lightPos.x = (lm[9].x - 0.5) * 10;
                 lightPos.y = -(lm[9].y - 0.5) * 8;
-                handZDepth = lm[9].z; // Z relatif
+                handZDepth = lm[9].z;
+                if(rStat) rStat.innerText = "ACTIVE (LIGHT)";
             } else {
-                updateHand(lm, jointsLeft, bonesLeft);
-                // INTERACTION 1 : Aimant (Distance au centre)
+                updateHandVisuals(lm, jointsLeft, bonesLeft);
                 const dx = lm[9].x - 0.5;
                 const dy = lm[9].y - 0.5;
                 handDistToCenter = Math.sqrt(dx*dx + dy*dy);
+                if(lStat) lStat.innerText = "ACTIVE (MAGNET)";
             }
-        }
+        });
     }
-}
-
-function updateHand(lm, jList, bList) {
-    lm.forEach((p, i) => {
-        jList[i].position.set((p.x-0.5)*8, -(p.y-0.5)*6, -p.z*5);
-        jList[i].visible = true;
-    });
-    CONNECTIONS.forEach((c, i) => {
-        bList[i].geometry.setFromPoints([jList[c[0]].position, jList[c[1]].position]);
-        bList[i].visible = true;
-    });
 }
 
 function animate() {
     requestAnimationFrame(animate);
 
-    // 1. AIMANT : Plus la main gauche est proche du centre, plus on déforme
+    // Interpolations fluides
     const targetDef = Math.max(0, 1.0 - (handDistToCenter * 2.5));
     smoothDeformation += (targetDef - smoothDeformation) * 0.1;
 
-    // 2. LUMIÈRE : Suit la main droite
+    const targetOp = Math.min(1.0, Math.max(0.2, 1.0 + (handZDepth * 5)));
+    smoothOpacity += (targetOp - smoothOpacity) * 0.1;
+
     if (pointLight) {
-        pointLight.position.lerp(new THREE.Vector3(lightPos.x, lightPos.y, 2), 0.1);
+        pointLight.position.x += (lightPos.x - pointLight.position.x) * 0.1;
+        pointLight.position.y += (lightPos.y - pointLight.position.y) * 0.1;
     }
 
-    // 3. CROISSANCE : La profondeur Z de la main droite change l'opacité
-    const targetOpacity = Math.min(1.0, Math.max(0.2, 1.0 + (handZDepth * 5)));
-    
+    // CRITICAL: On vérifie que l'objet est bien chargé avant d'agir
     if (object3D && voronoiShaderMaterial) {
         voronoiShaderMaterial.uniforms.deformation.value = smoothDeformation;
-        voronoiShaderMaterial.uniforms.opacity.value = targetOpacity;
+        voronoiShaderMaterial.uniforms.opacity.value = smoothOpacity;
         voronoiShaderMaterial.uniforms.time.value += 0.02;
-        // Rotation automatique pour le style
         object3D.rotation.y += 0.005;
     }
 
     renderer.render(scene, camera);
 }
 
-function onWindowResize() {
+window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-}
+});
 
 init3D();
 animate();
