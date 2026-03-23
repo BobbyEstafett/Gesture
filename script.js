@@ -25,7 +25,7 @@ function init3D() {
     scene.add(pointLight);
     scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-    // SHADER "PURE CRYSTAL" - VERSION FIXÉE (SANS ESPACES AVANT EXTENSION)
+    // SHADER CRYSTAL - CORRECTION CRITIQUE SYNTAXE
     crystalMaterial = new THREE.ShaderMaterial({
         uniforms: {
             time: { value: 0 },
@@ -50,49 +50,43 @@ function init3D() {
 
             void main() {
                 float n = noise(position * 2.0 + time * 0.5);
-                vec3 newPos = position + normal * n * deformation * 1.0;
+                vec3 newPos = position + (normal * n * deformation * 1.0);
                 vec4 worldPos = modelMatrix * vec4(newPos, 1.0);
                 vWorldPosition = worldPos.xyz;
                 vNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
                 gl_Position = projectionMatrix * viewMatrix * worldPos;
             }
         `,
-        fragmentShader: `#extension GL_OES_standard_derivatives : enable
-            precision highp float;
-            uniform float time;
-            uniform float deformation;
-            uniform vec3 lightPos;
-            uniform sampler2D uTexture;
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
-
-            vec3 getFakeEnv(vec3 dir) {
-                float t = time * 0.1;
-                vec3 col = 0.5 + 0.5 * cos(t + dir.xyy * 2.0 + vec3(0,2,4));
-                return col * pow(abs(dir.z), 2.0) * 0.4;
-            }
-
-            void main() {
-                vec3 viewDir = normalize(cameraPosition - vWorldPosition);
-                vec3 lightDir = normalize(lightPos - vWorldPosition);
-                
-                vec3 fdx = dFdx(vWorldPosition);
-                vec3 fdy = dFdy(vWorldPosition);
-                vec3 faceNormal = normalize(cross(fdx, fdy));
-
-                vec3 refr = refract(-viewDir, faceNormal, 0.88);
-                vec3 crystalCol = getFakeEnv(refr);
-
-                float spec = pow(max(dot(reflect(-lightDir, faceNormal), viewDir), 0.0), 64.0);
-                float fresnel = pow(1.0 - max(dot(faceNormal, viewDir), 0.0), 3.0);
-                
-                vec3 holoCol = mix(vec3(0.0, 1.0, 0.8), vec3(0.6, 0.2, 1.0), deformation);
-                vec3 finalCol = crystalCol + (holoCol * fresnel * 1.2);
-                finalCol += vec3(spec) * 2.0;
-
-                gl_FragColor = vec4(finalCol, 0.95);
-            }
-        `.trim(),
+        fragmentShader: [
+            '#extension GL_OES_standard_derivatives : enable',
+            'precision highp float;',
+            'uniform float time;',
+            'uniform float deformation;',
+            'uniform vec3 lightPos;',
+            'uniform sampler2D uTexture;',
+            'varying vec3 vNormal;',
+            'varying vec3 vWorldPosition;',
+            'vec3 getFakeEnv(vec3 dir) {',
+            '  float t = time * 0.1;',
+            '  vec3 col = 0.5 + 0.5 * cos(t + dir.xyy * 2.0 + vec3(0,2,4));',
+            '  return col * pow(abs(dir.z), 2.0) * 0.4;',
+            '}',
+            'void main() {',
+            '  vec3 viewDir = normalize(cameraPosition - vWorldPosition);',
+            '  vec3 lightDir = normalize(lightPos - vWorldPosition);',
+            '  vec3 fdx = dFdx(vWorldPosition);',
+            '  vec3 fdy = dFdy(vWorldPosition);',
+            '  vec3 faceNormal = normalize(cross(fdx, fdy));',
+            '  vec3 refr = refract(-viewDir, faceNormal, 0.88);',
+            '  vec3 crystalCol = getFakeEnv(refr);',
+            '  float spec = pow(max(dot(reflect(-lightDir, faceNormal), viewDir), 0.0), 64.0);',
+            '  float fresnel = pow(1.0 - max(dot(faceNormal, viewDir), 0.0), 3.0);',
+            '  vec3 holoCol = mix(vec3(0.0, 1.0, 0.8), vec3(0.6, 0.2, 1.0), deformation);',
+            '  vec3 finalCol = crystalCol + (holoCol * fresnel * 1.2);',
+            '  finalCol += vec3(spec) * 2.0;',
+            '  gl_FragColor = vec4(finalCol, 0.95);',
+            '}'
+        ].join('\n'),
         transparent: true,
         extensions: { derivatives: true }
     });
@@ -112,8 +106,9 @@ function init3D() {
         });
         object3D.scale.set(1.5, 1.5, 1.5);
         scene.add(object3D);
+        console.log("CRISTAL CHARGÉ");
     }, undefined, (error) => {
-        console.warn("Erreur GLB, chargement de la sphère facétisée.");
+        console.warn("ERREUR GLB, FALLBACK SPHÈRE");
         object3D = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 3), crystalMaterial);
         scene.add(object3D);
     });
@@ -153,8 +148,10 @@ function animate() {
         pointLight.position.lerp(lightTargetPos, 0.1);
         if(crystalMaterial) crystalMaterial.uniforms.lightPos.value.copy(pointLight.position);
     }
-    crystalMaterial.uniforms.time.value += 0.015;
-    crystalMaterial.uniforms.deformation.value = smoothDeformation;
+    if(crystalMaterial) {
+        crystalMaterial.uniforms.time.value += 0.015;
+        crystalMaterial.uniforms.deformation.value = smoothDeformation;
+    }
     if (object3D) object3D.rotation.y += 0.005;
     renderer.render(scene, camera);
 }
