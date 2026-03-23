@@ -113,7 +113,7 @@ function init3D() {
     });
 
     const loader = new THREE.GLTFLoader();
-    loader.load('conifer_cone.glb', (gltf) => {
+    loader.load('crystal.glb', (gltf) => {
         object3D = gltf.scene;
         object3D.traverse(c => {
             if(c.isMesh) {
