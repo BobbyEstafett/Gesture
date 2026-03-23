@@ -129,15 +129,18 @@ function init3D() {
         object3D = gltf.scene;
         object3D.traverse(c => {
             if(c.isMesh) {
-                // On applique notre matériau spécial à tout le maillage
+                // On s'assure que le matériau est bien notre shader
                 c.material = voronoiShaderMaterial;
+                // FORCE le rendu des faces et non des lignes
+                c.material.wireframe = false;
+                // Optionnel : double face pour voir l'intérieur si l'objet est ouvert
+                c.material.side = THREE.DoubleSide;
             }
         });
         object3D.scale.set(1.8, 1.8, 1.8);
         scene.add(object3D);
-    }, undefined, () => {
-        // Fallback : Si le fichier GLB n'est pas trouvé, on crée une sphère 3D
-        console.warn("conifer_cone.glb non trouvé, création d'une sphère de secours.");
+    }, undefined, (error) => {
+        console.error("Erreur chargement GLB, passage à la sphère :", error);
         object3D = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5, 32), voronoiShaderMaterial);
         scene.add(object3D);
     });
