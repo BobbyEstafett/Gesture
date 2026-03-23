@@ -2,22 +2,23 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dual Hand 3D Controller</title>
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; color: #00ffcc; font-family: 'Courier New', Courier, monospace; }
-        #canvas-container { width: 100vw; height: 100vh; }
-        .input_video { display: none; }
-        #ui-layer {
-            position: absolute; top: 20px; left: 20px; z-index: 10;
-            background: rgba(0,0,0,0.6); padding: 15px; border: 1px solid #00ffcc;
-            pointer-events: none; line-height: 1.6; font-size: 13px;
-        }
-        .stat-val { color: white; font-weight: bold; }
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Dual Hand 3D Controller</title>
+            <style>
+                body { margin: 0; overflow: hidden; background: #000; color: #00ffcc; font-family: 'Courier New', Courier, monospace; }
+                #canvas-container { width: 100vw; height: 100vh; }
+                .input_video { display: none; }
+                #ui-layer {
+                    position: absolute; top: 20px; left: 20px; z-index: 10;
+                    background: rgba(0,0,0,0.6); padding: 15px; border: 1px solid #00ffcc;
+                    pointer-events: none; line-height: 1.6; font-size: 13px;
+                }
+                .stat-val { color: white; font-weight: bold; }
+            </style>
+            <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+            <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
     <div id="ui-layer">
