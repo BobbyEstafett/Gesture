@@ -2,6 +2,9 @@
 const videoElement = document.querySelector('.input_video');
 const lStat = document.getElementById('l-stat');
 const rStat = document.getElementById('r-stat');
+const textureLoader = new THREE.TextureLoader();
+// Remplace 'ton_image.jpg' par le vrai nom de ton fichier
+const taTextureDiffuse = textureLoader.load('textures/ma_diffuse_digital.jpg');
 
 let scene, camera, renderer, object3D, crystalMaterial, pointLight;
 let smoothDeformation = 0;
@@ -43,79 +46,81 @@ crystalMaterial = new THREE.ShaderMaterial({
             time: { value: 0 },
             lightPos: { value: new THREE.Vector3(0, 0, 3) },
             uEnvMap: { value: envMap }
+            uDiffuse: { value: taTextureDiffuse },
             // Note: On n'ajoute pas 'deformation' ici pour l'instant pour éviter les erreurs
         },
-        vertexShader: `
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
-            varying vec3 vViewDir;
-            varying vec3 vBarycentric; // Ajouté pour le calcul des bords
+vertexShader: `
+    varying vec3 vNormal;
+    varying vec3 vWorldPosition;
+    varying vec3 vViewDir;
+    varying vec2 vUv; // <-- Indispensable
 
-            void main() {
-                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                vWorldPosition = worldPosition.xyz;
-                vNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
-                vViewDir = normalize(worldPosition.xyz - cameraPosition);
-                
-                // On utilise les positions locales pour simuler des bords
-                vBarycentric = position; 
-                
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
+    void main() {
+        vUv = uv; // <-- Récupère les UV du modèle
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        vNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
+        vViewDir = normalize(worldPosition.xyz - cameraPosition);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`,
 fragmentShader: `
-            precision highp float;
-            uniform float time;
-            uniform sampler2D uEnvMap;
-            uniform vec3 lightPos;
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
-            varying vec3 vViewDir;
+    precision highp float;
+    uniform float time;
+    uniform sampler2D uEnvMap;
+    uniform sampler2D uDiffuse; // <-- 1. On déclare la texture ici
+    uniform vec3 lightPos;
+    varying vec3 vNormal;
+    varying vec3 vWorldPosition;
+    varying vec3 vViewDir;
+    varying vec2 vUv; // <-- 2. Assure-toi que ton Vertex Shader envoie vUv
 
-            void main() {
-                // 1. FORCER LES FACETTES (Même au repos)
-                vec3 fdx = dFdx(vWorldPosition);
-                vec3 fdy = dFdy(vWorldPosition);
-                vec3 faceNormal = normalize(cross(fdx, fdy));
+    void main() {
+        // --- 1. Facettes ---
+        vec3 fdx = dFdx(vWorldPosition);
+        vec3 fdy = dFdy(vWorldPosition);
+        vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // 2. ÉCARTER LES INDICES (Rainbow plus fort)
-                // On passe à 0.80, 0.85, 0.90 pour bien voir le Rouge, Vert, Bleu
-                vec3 refrR = refract(vViewDir, faceNormal, 0.80);
-                vec3 refrG = refract(vViewDir, faceNormal, 0.85);
-                vec3 refrB = refract(vViewDir, faceNormal, 0.90);
+        // --- 2. Aberration Chromatique ---
+        vec3 refrR = refract(vViewDir, faceNormal, 0.80);
+        vec3 refrG = refract(vViewDir, faceNormal, 0.85);
+        vec3 refrB = refract(vViewDir, faceNormal, 0.90);
 
-                // 3. MAPPING UV
-                vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.2831 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.1415);
-                vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.2831 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.1415);
-                vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.2831 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.1415);
+        vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.28 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.14);
+        vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.28 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.14);
+        vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.28 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.14);
 
-                vec3 color;
-                color.r = texture2D(uEnvMap, uvR).r;
-                color.g = texture2D(uEnvMap, uvG).g;
-                color.b = texture2D(uEnvMap, uvB).b;
+        vec3 crystalCol;
+        crystalCol.r = texture2D(uEnvMap, uvR).r;
+        crystalCol.g = texture2D(uEnvMap, uvG).g;
+        crystalCol.b = texture2D(uEnvMap, uvB).b;
 
-                // 4. BOOSTER LA SATURATION (Pour éviter le côté "tout blanc")
-                // On multiplie par des teintes spectrales si c'est trop gris
-                vec3 spectral = vec3(1.0, 0.8, 1.2); // On tire un peu sur le bleu/violet digital
-                color *= spectral;
+        // --- 3. INTÉGRATION DE LA DIFFUSE ---
+        vec3 texDiffuse = texture2D(uDiffuse, vUv).rgb;
+        // On multiplie le rainbow par la diffuse. 
+        // Les zones blanches de ta diffuse laissent passer tout le rainbow.
+        // Les zones colorées de ta diffuse teintent le rainbow.
+        crystalCol *= texDiffuse;
 
-                // 5. RÉFLEXION & FRESNEL
-                vec3 reflectDir = reflect(vViewDir, faceNormal);
-                vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.2831 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.1415);
-                vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
+        // --- 4. Corrections (Ton code actuel) ---
+        crystalCol = pow(crystalCol, vec3(2.5));
+        crystalCol *= 3.0; 
+        crystalCol += vec3(0.1, 0.0, 0.2); 
 
-                // On baisse le Fresnel à 3.0 au lieu de 5.0 pour que les bords 
-                // ne soient pas trop "blancs" de reflets
-                float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 3.0);
-                vec3 finalCol = mix(color, reflection, fresnel * 0.3);
-                
-                // Specular
-                vec3 lightDir = normalize(lightPos - vWorldPosition);
-                float spec = pow(max(dot(reflect(-lightDir, faceNormal), -vViewDir), 0.0), 32.0);
-                
-                gl_FragColor = vec4(finalCol + spec * 0.5, 1.0);
-            }
-        `,
+        // --- 5. Réflexion & Fresnel ---
+        vec3 reflectDir = reflect(vViewDir, faceNormal);
+        vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.28 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.14);
+        vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
+
+        float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 2.0);
+        vec3 finalCol = mix(crystalCol, reflection, fresnel * 0.2);
+        
+        vec3 lightDir = normalize(lightPos - vWorldPosition);
+        float spec = pow(max(dot(reflect(-lightDir, faceNormal), -vViewDir), 0.0), 32.0);
+        
+        gl_FragColor = vec4(finalCol + spec * 0.4, 1.0);
+    }
+`,
         transparent: true
     });
 
