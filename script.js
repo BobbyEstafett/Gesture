@@ -56,8 +56,8 @@ function init3D() {
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
         `,
-        fragmentShader: `
-precision highp float;
+fragmentShader: `
+            precision highp float;
             uniform float time;
             uniform sampler2D uEnvMap;
             uniform vec3 lightPos;
@@ -66,32 +66,16 @@ precision highp float;
             varying vec3 vViewDir;
 
             void main() {
-                // dFdx est maintenant disponible car activé via 'extensions' plus haut
+                // 1. Calcul des normales de face (pour le look taillé)
                 vec3 fdx = dFdx(vWorldPosition);
                 vec3 fdy = dFdy(vWorldPosition);
                 vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // 1. Calcul de la différence entre normale lisse et normale de face
-                // Plus le résultat est proche de 1, plus on est au centre d'une face.
-                // Plus il descend, plus on est proche d'une arête vive.
-                float edge = dot(vNormal, faceNormal);
-
-                // 2. On accentue le contraste pour ne garder qu'un trait fin
-                // On inverse avec (1.0 - ...) pour que l'arête soit blanche (1.0)
-                float edgeMask = 1.0 - smoothstep(0.8, 0.95, edge);
-
-                // 3. On définit une couleur pour l'arête (ex: Bleu Néon)
-                vec3 edgeColor = vec3(0.0, 1.0, 1.0); 
-
-                // 4. On l'ajoute au résultat final juste avant le gl_FragColor
-                vec3 finalColWithEdges = finalCol + (edgeColor * edgeMask * 2.0);
-
-                // Réfraction
+                // 2. Réfraction Chromatique
                 vec3 refrR = refract(vViewDir, faceNormal, 0.82);
                 vec3 refrG = refract(vViewDir, faceNormal, 0.84);
                 vec3 refrB = refract(vViewDir, faceNormal, 0.86);
 
-                // Mapping UV
                 vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.2831 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.1415);
                 vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.2831 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.1415);
                 vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.2831 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.1415);
@@ -101,10 +85,9 @@ precision highp float;
                 color.g = texture2D(uEnvMap, uvG).g;
                 color.b = texture2D(uEnvMap, uvB).b;
 
-                // Si noir (image non chargée), bleu cristal de secours
                 if(length(color) < 0.01) color = vec3(0.1, 0.25, 0.45);
 
-                // Réflexion
+                // 3. Réflexion & Fresnel
                 vec3 reflectDir = reflect(vViewDir, faceNormal);
                 vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.2831 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.1415);
                 vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
@@ -112,13 +95,23 @@ precision highp float;
                 float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 5.0);
                 vec3 finalCol = mix(color, reflection, fresnel * 0.5);
                 
-                // Specular (Brillance)
+                // 4. Specular (Brillance)
                 vec3 lightDir = normalize(lightPos - vWorldPosition);
                 float spec = pow(max(dot(reflect(-lightDir, faceNormal), -vViewDir), 0.0), 32.0);
+
+                // --- AJOUT DES ARÊTES (EDGE DETECTION) ---
+                // Comparaison normale lisse vs normale de face
+                float edge = dot(vNormal, faceNormal);
+                // On crée un masque très fin (plus le 0.95 est haut, plus le trait est fin)
+                float edgeMask = 1.0 - smoothstep(0.8, 0.95, edge);
+                vec3 edgeColor = vec3(0.0, 1.0, 1.0); // Cyan néon
                 
-                gl_FragColor = vec4(finalCol + spec * 0.5, 1.0);
+                // On ajoute les arêtes lumineuses au résultat
+                vec3 finalWithEdges = finalCol + (edgeColor * edgeMask * 2.0) + (spec * 0.5);
+
+                gl_FragColor = vec4(finalWithEdges, 1.0);
             }
-        `,
+            `,
         transparent: true
     });
 
