@@ -27,71 +27,12 @@ function init3D() {
     pointLight.position.set(0, 0, 3);
     scene.add(pointLight);
 
-    crystalMaterial = new THREE.RawShaderMaterial({
-        uniforms: {
-            time: { value: 0 },
-            deformation: { value: 0 },
-            uEnvMap: { value: envMap },
-            lightPos: { value: new THREE.Vector3(0, 0, 3) },
-            projectionMatrix: { value: camera.projectionMatrix },
-            modelViewMatrix: { value: new THREE.Matrix4() },
-            modelMatrix: { value: new THREE.Matrix4() }, // Indispensable pour worldPos
-            cameraPosition: { value: camera.position }
-        },
-        vertexShader: `
-            precision highp float;
-            attribute vec3 position;
-            attribute vec3 normal;
-            uniform mat4 modelViewMatrix;
-            uniform mat4 projectionMatrix;
-            uniform mat4 modelMatrix;
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
-            void main() {
-                vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                vWorldPosition = worldPos.xyz;
-                vNormal = normalize(mat3(modelMatrix) * normal);
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            precision highp float;
-            #extension GL_OES_standard_derivatives : enable
-            uniform float time;
-            uniform float deformation;
-            uniform sampler2D uEnvMap;
-            uniform vec3 lightPos;
-            uniform vec3 cameraPosition;
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
-
-            void main() {
-                vec3 viewDir = normalize(vWorldPosition - cameraPosition);
-                vec3 fdx = dFdx(vWorldPosition);
-                vec3 fdy = dFdy(vWorldPosition);
-                vec3 faceNormal = normalize(cross(fdx, fdy));
-
-                vec2 uv = vNormal.xy * 2.0 + vWorldPosition.xz * 0.5;
-                float lines = sin(uv.y * 30.0 + time * 2.0) * 0.5 + 0.5;
-                float scan = smoothstep(0.4, 0.5, lines);
-                
-                vec3 refrR = refract(viewDir, faceNormal, 0.82);
-                vec3 refrG = refract(viewDir, faceNormal, 0.85);
-                vec3 refrB = refract(viewDir, faceNormal, 0.88);
-                
-                vec3 colR = 0.5 + 0.5 * cos(time + refrR.zxy * 3.0 + vec3(0,2,4));
-                vec3 colG = 0.5 + 0.5 * cos(time + refrG.zxy * 3.0 + vec3(2,4,0));
-                vec3 colB = 0.5 + 0.5 * cos(time + refrB.zxy * 3.0 + vec3(4,0,2));
-                
-                vec3 finalColor = vec3(colR.r, colG.g, colB.b) * (0.3 + scan * 0.7);
-                float fresnel = pow(1.0 + dot(viewDir, faceNormal), 3.0);
-                finalColor += fresnel * vec3(0.5, 0.8, 1.0) * (1.0 + deformation);
-
-                gl_FragColor = vec4(finalColor, 1.0);
-            }
-        `,
-        transparent: true
-    });
+    crystalMaterial = new THREE.MeshPhongMaterial({ 
+    color: 0x00ffff, 
+    flatShading: true, 
+    transparent: true, 
+    opacity: 0.8 
+});
 
     const loader = new THREE.GLTFLoader();
     loader.load('crystal.glb', (gltf) => {
