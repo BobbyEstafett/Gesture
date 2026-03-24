@@ -16,7 +16,7 @@ function init3D() {
     // 1. CHARGEMENT DE L'ENVIRONNEMENT
     const rgbeLoader = new THREE.TextureLoader();
     // Utilisation d'une image compatible Three.js pour tester si le lien GitHub bug
-    const envMap = rgbeLoader.load('https://raw.githubusercontent.com/BobbyEstafett/Gesture/main/wooden_studio_09_2k.jpg');
+    const envMap = rgbeLoader.load('wooden_studio_09_2k.jpg');
     envMap.mapping = THREE.EquirectangularReflectionMapping;
 
     scene = new THREE.Scene();
@@ -29,7 +29,7 @@ function init3D() {
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
     // LUMIÈRES
-    pointLight = new THREE.PointLight(0xffffff, 20, 20);
+    pointLight = new THREE.PointLight(0xfffff, 20, 20);
     pointLight.position.set(0, 0, 3);
     scene.add(pointLight);
     scene.add(new THREE.AmbientLight(0xffffff, 0.5));
@@ -63,7 +63,7 @@ crystalMaterial = new THREE.ShaderMaterial({
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
         `,
-        fragmentShader: `
+fragmentShader: `
             precision highp float;
             uniform float time;
             uniform sampler2D uEnvMap;
@@ -73,47 +73,47 @@ crystalMaterial = new THREE.ShaderMaterial({
             varying vec3 vViewDir;
 
             void main() {
-                // 1. Calcul des facettes
+                // 1. FORCER LES FACETTES (Même au repos)
                 vec3 fdx = dFdx(vWorldPosition);
                 vec3 fdy = dFdy(vWorldPosition);
                 vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // 2. Détection d'arêtes (La méthode qui marche)
-                // On détecte le saut de normale entre deux faces
-                float edgeLogic = fwidth(faceNormal.x) + fwidth(faceNormal.y) + fwidth(faceNormal.z);
-                float edgeMask = smoothstep(0.0, 0.1, edgeLogic);
+                // 2. ÉCARTER LES INDICES (Rainbow plus fort)
+                // On passe à 0.80, 0.85, 0.90 pour bien voir le Rouge, Vert, Bleu
+                vec3 refrR = refract(vViewDir, faceNormal, 0.80);
+                vec3 refrG = refract(vViewDir, faceNormal, 0.85);
+                vec3 refrB = refract(vViewDir, faceNormal, 0.90);
 
-                // 3. Réfraction
-                vec3 refrR = refract(vViewDir, faceNormal, 0.82);
-                vec3 refrG = refract(vViewDir, faceNormal, 0.84);
-                vec3 refrB = refract(vViewDir, faceNormal, 0.86);
-
-                vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.28 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.14);
-                vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.28 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.14);
-                vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.28 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.14);
+                // 3. MAPPING UV
+                vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.2831 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.1415);
+                vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.2831 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.1415);
+                vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.2831 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.1415);
 
                 vec3 color;
                 color.r = texture2D(uEnvMap, uvR).r;
                 color.g = texture2D(uEnvMap, uvG).g;
                 color.b = texture2D(uEnvMap, uvB).b;
-                if(length(color) < 0.01) color = vec3(0.1, 0.2, 0.3);
 
-                // 4. Réflexion & Fresnel
+                // 4. BOOSTER LA SATURATION (Pour éviter le côté "tout blanc")
+                // On multiplie par des teintes spectrales si c'est trop gris
+                vec3 spectral = vec3(1.0, 0.8, 1.2); // On tire un peu sur le bleu/violet digital
+                color *= spectral;
+
+                // 5. RÉFLEXION & FRESNEL
                 vec3 reflectDir = reflect(vViewDir, faceNormal);
-                vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.28 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.14);
+                vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.2831 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.1415);
                 vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
-                float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 5.0);
+
+                // On baisse le Fresnel à 3.0 au lieu de 5.0 pour que les bords 
+                // ne soient pas trop "blancs" de reflets
+                float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 3.0);
+                vec3 finalCol = mix(color, reflection, fresnel * 0.3);
                 
-                vec3 finalCol = mix(color, reflection, fresnel * 0.5);
-                
-                // 5. Brillance & Arêtes
+                // Specular
                 vec3 lightDir = normalize(lightPos - vWorldPosition);
                 float spec = pow(max(dot(reflect(-lightDir, faceNormal), -vViewDir), 0.0), 32.0);
                 
-                // On ajoute les arêtes en Cyan (edgeMask)
-                vec3 neonEdge = vec3(0.0, 1.0, 1.0) * edgeMask * 2.0;
-
-                gl_FragColor = vec4(finalCol + neonEdge + spec * 0.5, 1.0);
+                gl_FragColor = vec4(finalCol + spec * 0.5, 1.0);
             }
         `,
         transparent: true
