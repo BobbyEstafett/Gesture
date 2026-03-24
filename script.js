@@ -114,17 +114,16 @@ crystalMaterial = new THREE.ShaderMaterial({
         fragments = []; // On vide au cas où
         
         object3D.traverse(c => {
-            if(c.isMesh) {
-                c.material = crystalMaterial;
-                // On enregistre la position relative et la direction d'explosion
-                fragments.push({
-                    mesh: c,
-                    originalPos: c.position.clone(),
-                    // La direction est le vecteur du centre vers le morceau
-                    explodeDir: c.position.clone().normalize()
-                });
-            }
+    if(c.isMesh) {
+        c.material = crystalMaterial;
+        fragments.push({
+            mesh: c,
+            originalPos: c.position.clone(),
+            originalRot: c.rotation.clone(), // ON AJOUTE CECI
+            explodeDir: c.position.clone().normalize()
         });
+    }
+});
         
         object3D.scale.set(1.5, 1.5, 1.5);
         scene.add(object3D);
@@ -173,33 +172,55 @@ function animate() {
     requestAnimationFrame(animate);
     
     // 1. Lissage de la main gauche (force d'explosion)
-    smoothDeformation += ((isLeftHandClosed ? 1.0 : 0.0) - smoothDeformation) * 0.08;
+    // On peut ralentir un peu le lissage (0.05) pour plus de lourdeur/classe
+    smoothDeformation += ((isLeftHandClosed ? 1.0 : 0.0) - smoothDeformation) * 0.05;
 
-    // 2. Gestion de la lumière
+    // 2. AUTO-ZOOM : La caméra recule quand ça éclate
+    // Position par défaut = 5. Position éclatée = 8.
+    if (camera) {
+        const targetZ = 5 + (smoothDeformation * 3.0); 
+        camera.position.z += (targetZ - camera.position.z) * 0.05;
+    }
+
+    // 3. Gestion de la lumière
     if (pointLight) {
         pointLight.position.lerp(lightTargetPos, 0.1);
         crystalMaterial.uniforms.lightPos.value.copy(pointLight.position);
     }
 
-    // 3. Animation du SCATTER (Explosion des morceaux)
+    // 4. Animation du SCATTER (Explosion contrôlée)
     fragments.forEach(f => {
-        // Position cible = Position initiale + (Vecteur direction * Force)
-        const targetX = f.originalPos.x + (f.explodeDir.x * smoothDeformation * 3.0);
-        const targetY = f.originalPos.y + (f.explodeDir.y * smoothDeformation * 3.0);
-        const targetZ = f.originalPos.z + (f.explodeDir.z * smoothDeformation * 3.0);
+    // 1. POSITION (RETOUR PARFAIT)
+    const targetX = f.originalPos.x + (f.explodeDir.x * smoothDeformation * 0.8);
+    const targetY = f.originalPos.y + (f.explodeDir.y * smoothDeformation * 0.8);
+    const targetZ = f.originalPos.z + (f.explodeDir.z * smoothDeformation * 0.8);
 
-        // Interpolation pour un mouvement organique
-        f.mesh.position.x += (targetX - f.mesh.position.x) * 0.1;
-        f.mesh.position.y += (targetY - f.mesh.position.y) * 0.1;
-        f.mesh.position.z += (targetZ - f.mesh.position.z) * 0.1;
+    f.mesh.position.x += (targetX - f.mesh.position.x) * 0.1;
+    f.mesh.position.y += (targetY - f.mesh.position.y) * 0.1;
+    f.mesh.position.z += (targetZ - f.mesh.position.z) * 0.1;
 
-        // Rotation individuelle des morceaux quand ils volent
-        f.mesh.rotation.x += smoothDeformation * 0.01;
-        f.mesh.rotation.z += smoothDeformation * 0.02;
-    });
+    // 2. ROTATION (RETOUR PARFAIT)
+    // On calcule une rotation "d'éclatement" (offset)
+    // On utilise le temps pour que ça tourne un peu en l'air
+    const time = crystalMaterial.uniforms.time.value;
+    const rotOffsetX = smoothDeformation * Math.sin(time * 2.0 + f.originalPos.x) * 2.0;
+    const rotOffsetZ = smoothDeformation * Math.cos(time * 2.0 + f.originalPos.y) * 2.0;
 
-    crystalMaterial.uniforms.time.value += 0.015;
-    if (object3D) object3D.rotation.y += 0.003;
+    // On définit la cible : Rotation d'origine + Offset d'explosion
+    const targetRotX = f.originalRot.x + rotOffsetX;
+    const targetRotZ = f.originalRot.z + rotOffsetZ;
+
+    // On applique de façon fluide
+    f.mesh.rotation.x += (targetRotX - f.mesh.rotation.x) * 0.1;
+    f.mesh.rotation.z += (targetRotZ - f.mesh.rotation.z) * 0.1;
+});
+
+    // 5. Mise à jour du Shader et rotation globale
+    crystalMaterial.uniforms.time.value += 0.01;
+    if (object3D) {
+        // Le cristal continue de tourner sur lui-même, même éclaté
+        object3D.rotation.y += 0.002;
+    }
     
     renderer.render(scene, camera);
 }
