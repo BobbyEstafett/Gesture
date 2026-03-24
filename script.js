@@ -6,7 +6,7 @@ const textureLoader = new THREE.TextureLoader();
 // Remplace 'ton_image.jpg' par le vrai nom de ton fichier
 const taTextureDiffuse = textureLoader.load('tex/gltf_embedded_0.png');
 
-let scene, camera, renderer, object3D, crystalMaterial, pointLight;
+let scene, camera, renderer, object3D, crystalMaterial, pointLight, particleMaterial, particleSystem;
 let smoothDeformation = 0;
 let isLeftHandClosed = false;
 let lightTargetPos = new THREE.Vector3(0, 0, 3);
@@ -21,6 +21,7 @@ function init3D() {
     // Utilisation d'une image compatible Three.js pour tester si le lien GitHub bug
     const envMap = rgbeLoader.load('wooden_studio_09_2k.jpg');
     envMap.mapping = THREE.EquirectangularReflectionMapping;
+    
 
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -36,6 +37,8 @@ function init3D() {
     pointLight.position.set(0, 0, 3);
     scene.add(pointLight);
     scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+   
 
     // SHADER CRYSTAL AMÉLIORÉ
 crystalMaterial = new THREE.ShaderMaterial({
@@ -137,6 +140,105 @@ fragmentShader: `
         transparent: true
     });
 
+// --- SYSTÈME DE PARTICULES GRAVITATIONNELLES ---
+const particleCount = 2000; // Nombre de particules (tu peux augmenter)
+const particleGeometry = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+const sizes = new Float32Array(particleCount);
+const offsets = new Float32Array(particleCount); // Pour décaler le mouvement
+
+for (let i = 0; i < particleCount; i++) {
+    // Position initiale aléatoire dans une sphère
+    const radius = 2 + Math.random() * 2; // Entre 2 et 4 de distance
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos((Math.random() * 2) - 1);
+
+    positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+    positions[i * 3 + 2] = radius * Math.cos(phi);
+
+    // Taille aléatoire
+    sizes[i] = 0.02 + Math.random() * 0.05;
+
+    // Décalage temporel aléatoire pour l'orbite
+    offsets[i] = Math.random() * 1000;
+}
+
+particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+particleGeometry.setAttribute('offset', new THREE.BufferAttribute(offsets, 1));
+
+// Matériau des Particules (Shader)
+const particleMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        time: { value: 0 },
+        color: { value: new THREE.Color(0x00ffff) }, // Cyan Néon
+        deformation: { value: 0 } // On liera ça à smoothDeformation
+    },
+    vertexShader: `
+        uniform float time;
+        uniform float deformation;
+        attribute float size;
+        attribute float offset;
+        varying float vOpacity;
+
+        void main() {
+            // Calcul de l'orbite
+            float t = time + offset;
+            
+            // Position de base (l'attribut 'position' généré en JS)
+            vec3 p = position;
+
+            // Rotation orbitale autour de l'axe Y
+            float orbitSpeed = 0.2 + deformation * 0.5; // Accélère avec l'explosion
+            float angle = t * orbitSpeed;
+            float cosA = cos(angle);
+            float sinA = sin(angle);
+            
+            vec3 rotatedPos;
+            rotatedPos.x = p.x * cosA - p.z * sinA;
+            rotatedPos.y = p.y + sin(t * 0.5 + offset) * 0.1; // Légère oscillation verticale
+            rotatedPos.z = p.x * sinA + p.z * cosA;
+
+            // Effet d'attraction/répulsion
+            float pulse = sin(t * 1.0) * 0.1;
+            rotatedPos *= (1.0 + pulse + deformation * 0.5);
+
+            vec4 mvPosition = modelViewMatrix * vec4(rotatedPos, 1.0);
+            
+            // Taille variable avec la distance (perspective)
+            gl_PointSize = size * (300.0 / -mvPosition.z);
+            
+            // Opacité variable pour le scintillement
+            vOpacity = 0.5 + sin(t * 5.0) * 0.3;
+
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        uniform vec3 color;
+        varying float vOpacity;
+
+        void main() {
+            // Dessiner un cercle flou (plus joli qu'un carré)
+            float d = distance(gl_PointCoord, vec2(0.5));
+            if (d > 0.5) discard;
+            
+            float strength = 1.0 - smoothstep(0.0, 0.5, d);
+            gl_FragColor = vec4(color, strength * vOpacity);
+        }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending, // Pour l'effet lumineux
+    depthWrite: false // Pour éviter les problèmes de transparence
+});
+
+const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+scene.add(particleSystem);
+
+
+
+
     const loader = new THREE.GLTFLoader();
     loader.load('crystal.glb', (gltf) => {
         object3D = gltf.scene;
@@ -231,6 +333,9 @@ function onResults(results) {
 
 function animate() {
     requestAnimationFrame(animate);
+
+    const deltaTime = 0.01; 
+    crystalMaterial.uniforms.time.value += deltaTime;
     
     smoothDeformation += ((isLeftHandClosed ? 1.0 : 0.0) - smoothDeformation) * 0.05;
 
@@ -240,6 +345,19 @@ function animate() {
         camera.position.z += (targetZ - camera.position.z) * 0.05;
     }
 
+// 2. Mise à jour du temps global pour tous les shaders
+    const currentTime = crystalMaterial.uniforms.time.value += 0.01;
+
+    // --- MISE À JOUR DES PARTICULES (À AJOUTER ICI) ---
+    if (particleSystem) {
+        // On synchronise le temps avec celui du cristal
+        particleSystem.material.uniforms.time.value = crystalMaterial.uniforms.time.value;
+        
+        // On passe la déformation pour l'accélération
+        particleSystem.material.uniforms.deformation.value = smoothDeformation;
+    }
+
+    
     // Lumière
     if (pointLight) {
         pointLight.position.lerp(lightTargetPos, 0.1);
@@ -262,6 +380,8 @@ function animate() {
         f.mesh.rotation.x += (f.originalRot.x + rotOffsetX - f.mesh.rotation.x) * 0.1;
         f.mesh.rotation.z += (f.originalRot.z + rotOffsetZ - f.mesh.rotation.z) * 0.1;
     });
+
+    
 
     crystalMaterial.uniforms.time.value += 0.01;
     if (object3D) object3D.rotation.y += 0.002;
