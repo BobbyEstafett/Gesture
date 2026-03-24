@@ -13,6 +13,9 @@ let jointsLeft = [], jointsRight = [];
 let fragments = [];
 
 function init3D() {
+    const rgbeLoader = new THREE.TextureLoader();
+const envMap = rgbeLoader.load('https://raw.githubusercontent.com/BobbyEstafett/Gesture/main/wooden_studio_09_2k.hdr'); // Exemple de nuit étoilée
+envMap.mapping = THREE.EquirectangularReflectionMapping;
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.z = 2;
@@ -30,77 +33,80 @@ function init3D() {
 
     // SHADER CRYSTAL (Stable et Performant)
 crystalMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            time: { value: 0 },
-            deformation: { value: 0 },
-            lightPos: { value: new THREE.Vector3(0, 0, 3) }
-        },
-        vertexShader: `
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
-            uniform float time;
-            uniform float deformation;
+    uniforms: {
+        time: { value: 0 },
+        lightPos: { value: new THREE.Vector3(0, 0, 3) },
+        uEnvMap: { value: envMap }, // On passe la cubemap ici
+        uCameraPos: { value: new THREE.Vector3() }
+    },
+    vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vWorldPosition;
+        varying vec3 vViewDir;
 
-            void main() {
-                // Pas de déformation ici pour garder les morceaux intacts (Scatter)
-                vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                vWorldPosition = worldPos.xyz;
-                vNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
-                gl_Position = projectionMatrix * viewMatrix * worldPos;
-            }
-        `,
-        fragmentShader: `
-            precision highp float;
-            uniform float time;
-            uniform float deformation;
-            uniform vec3 lightPos;
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
+        void main() {
+            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+            vWorldPosition = worldPosition.xyz;
+            vNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
+            vViewDir = normalize(worldPosition.xyz - cameraPosition);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        #extension GL_OES_standard_derivatives : enable
+        precision highp float;
 
-            // Simule des reflets arc-en-ciel internes
-            vec3 getRainbow(vec3 dir) {
-                float t = time * 0.1;
-                vec3 col = 0.5 + 0.5 * cos(t + dir.xyy * 2.0 + vec3(0,2,4));
-                return col * pow(abs(dir.z), 2.0) * 0.4;
-            }
+        uniform float time;
+        uniform sampler2D uEnvMap; // Utilisation d'une map panoramique simple
+        uniform vec3 lightPos;
+        varying vec3 vNormal;
+        varying vec3 vWorldPosition;
+        varying vec3 vViewDir;
 
-            void main() {
-                vec3 viewDir = normalize(cameraPosition - vWorldPosition);
-                vec3 lightDir = normalize(lightPos - vWorldPosition);
-                
-                // 1. FACETTES (Calculées dynamiquement)
-                vec3 fdx = dFdx(vWorldPosition);
-                vec3 fdy = dFdy(vWorldPosition);
-                vec3 faceNormal = normalize(cross(fdx, fdy));
+        void main() {
+            // 1. FLAT SHADING (L'aspect taillé de ykob)
+            vec3 fdx = dFdx(vWorldPosition);
+            vec3 fdy = dFdy(vWorldPosition);
+            vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // 2. RÉFRACTION CHROMATIQUE (Index R, G, B différents)
-                vec3 refrR = refract(-viewDir, faceNormal, 0.85);
-                vec3 refrG = refract(-viewDir, faceNormal, 0.87);
-                vec3 refrB = refract(-viewDir, faceNormal, 0.89);
+            // 2. RÉFRACTION CHROMATIQUE (Triple échantillonnage)
+            // On décale les indices pour créer l'arc-en-ciel interne
+            vec3 refrR = refract(vViewDir, faceNormal, 0.82);
+            vec3 refrG = refract(vViewDir, faceNormal, 0.84);
+            vec3 refrB = refract(vViewDir, faceNormal, 0.86);
 
-                vec3 crystalR = getRainbow(refrR);
-                vec3 crystalG = getRainbow(refrG);
-                vec3 crystalB = getRainbow(refrB);
-                vec3 finalCrystal = vec3(crystalR.r, crystalG.g, crystalB.b);
+            // On transforme les vecteurs de réfraction en coordonnées UV pour la texture
+            vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.2831 + 0.5, acos(refrR.y) / 3.1415);
+            vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.2831 + 0.5, acos(refrG.y) / 3.1415);
+            vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.2831 + 0.5, acos(refrB.y) / 3.1415);
 
-                // 3. BRILLANCE ET FRESNEL
-                float spec = pow(max(dot(reflect(-lightDir, faceNormal), viewDir), 0.0), 64.0);
-                float fresnel = pow(1.0 - max(dot(faceNormal, viewDir), 0.0), 3.0);
-                
-                // Couleur holographique sur les bords (fresnel)
-                vec3 holoCol = mix(vec3(0.3, 0.8, 1.0), vec3(0.8, 0.2, 1.0), deformation);
-                
-                // Assemblage
-                vec3 color = finalCrystal;
-                color += holoCol * fresnel * 1.5;
-                color += vec3(spec) * 2.0;
+            float r = texture2D(uEnvMap, uvR).r;
+            float g = texture2D(uEnvMap, uvG).g;
+            float b = texture2D(uEnvMap, uvB).b;
 
-                gl_FragColor = vec4(color, 0.95);
-            }
-        `,
-        transparent: true,
-        extensions: { derivatives: true } // Active dFdx/dFdy proprement
-    });
+            // 3. RÉFLEXION (Le miroir de surface)
+            vec3 reflectDir = reflect(vViewDir, faceNormal);
+            vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.2831 + 0.5, acos(reflectDir.y) / 3.1415);
+            vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
+
+            // 4. FRESNEL (Mélange réfraction/réflexion)
+            float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 5.0);
+
+            // 5. FINAL COMBINATION
+            vec3 color = vec3(r, g, b); // Base refractée
+            color = mix(color, reflection, fresnel); // Ajout des reflets sur les bords
+            
+            // Ajout d'un éclat spéculaire pour le punch
+            vec3 lightDir = normalize(lightPos - vWorldPosition);
+            float spec = pow(max(dot(reflect(-lightDir, faceNormal), -vViewDir), 0.0), 32.0);
+            color += spec * 0.8;
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `.trim(),
+    transparent: true,
+    extensions: { derivatives: true }
+});
 
     const loader = new THREE.GLTFLoader();
     loader.load('crystal.glb', (gltf) => {
