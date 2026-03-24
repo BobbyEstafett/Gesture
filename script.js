@@ -148,15 +148,20 @@ crystalMaterial = new THREE.ShaderMaterial({
 }
 
 function onResults(results) {
+    // 1. On cache tous les points par défaut
     [jointsLeft, jointsRight].forEach(list => list.forEach(j => j.visible = false));
-    if (results.multiHandLandmarks) {
+
+    // 2. Si on détecte des mains
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         results.multiHandLandmarks.forEach((lm, i) => {
             const isRight = results.multiHandedness[i].label === 'Right';
             const targetJoints = isRight ? jointsRight : jointsLeft;
+            
             lm.forEach((p, idx) => {
                 targetJoints[idx].position.set((p.x-0.5)*10, -(p.y-0.5)*8, -p.z*5);
                 targetJoints[idx].visible = true;
             });
+
             if (isRight) {
                 lightTargetPos.x = (lm[9].x - 0.5) * 12;
                 lightTargetPos.y = -(lm[9].y - 0.5) * 10;
@@ -165,6 +170,12 @@ function onResults(results) {
                 isLeftHandClosed = dist < 0.35;
             }
         });
+    } else {
+        // --- SÉCURITÉ : MAINS PERDUES ---
+        // Si aucune main n'est vue par la caméra, on "ferme" l'état d'explosion
+        isLeftHandClosed = false;
+        // On peut aussi recentrer la lumière par défaut si on veut
+        lightTargetPos.set(0, 0, 3);
     }
 }
 
