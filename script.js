@@ -148,33 +148,53 @@ function init3D() {
 }
 
 function onResults(results) {
-    // 1. On cache tous les points par défaut
     [jointsLeft, jointsRight].forEach(list => list.forEach(j => j.visible = false));
 
-    // 2. Si on détecte des mains
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         results.multiHandLandmarks.forEach((lm, i) => {
             const isRight = results.multiHandedness[i].label === 'Right';
             const targetJoints = isRight ? jointsRight : jointsLeft;
             
+            // Affichage des points
             lm.forEach((p, idx) => {
                 targetJoints[idx].position.set((p.x-0.5)*10, -(p.y-0.5)*8, -p.z*5);
                 targetJoints[idx].visible = true;
             });
 
             if (isRight) {
+                // Main Droite : Contrôle de la lumière (inchangé)
                 lightTargetPos.x = (lm[9].x - 0.5) * 12;
                 lightTargetPos.y = -(lm[9].y - 0.5) * 10;
             } else {
-                const dist = Math.sqrt(Math.pow(lm[12].x-lm[0].x,2)+Math.pow(lm[12].y-lm[0].y,2));
-                isLeftHandClosed = dist < 0.35;
+                // --- DETECTION DU POING GAUCHE ROBUSTE ---
+                // On vérifie si les 4 doigts longs sont courbés
+                // Index: 8, Majeur: 12, Annulaire: 16, Auriculaire: 20
+                const fingerTips = [8, 12, 16, 20];
+                const fingerBases = [5, 9, 13, 17]; // Articulations de base
+                
+                let curledFingers = 0;
+                fingerTips.forEach((tipIdx, index) => {
+                    const tip = lm[tipIdx];
+                    const base = lm[fingerBases[index]];
+                    const wrist = lm[0];
+
+                    // Si le bout du doigt est plus proche du poignet que sa propre base
+                    // alors le doigt est considéré comme plié (curl)
+                    const distTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+                    const distBase = Math.hypot(base.x - wrist.x, base.y - wrist.y);
+                    
+                    if (distTip < distBase) curledFingers++;
+                });
+
+                // On considère le poing fermé si au moins 3 doigts sur 4 sont pliés
+                // C'est beaucoup plus stable que la distance simple !
+                isLeftHandClosed = (curledFingers >= 3);
+                
+                if(lStat) lStat.innerText = isLeftHandClosed ? "FRACTURE" : "STABLE";
             }
         });
     } else {
-        // --- SÉCURITÉ : MAINS PERDUES ---
-        // Si aucune main n'est vue par la caméra, on "ferme" l'état d'explosion
         isLeftHandClosed = false;
-        // On peut aussi recentrer la lumière par défaut si on veut
         lightTargetPos.set(0, 0, 3);
     }
 }
