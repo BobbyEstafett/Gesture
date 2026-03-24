@@ -1,95 +1,107 @@
 // --- CONFIGURATION ---
 const videoElement = document.querySelector('.input_video');
 const lStat = document.getElementById('l-stat');
+const rStat = document.getElementById('r-stat');
 
 let scene, camera, renderer, object3D, crystalMaterial, pointLight;
 let smoothDeformation = 0;
 let isLeftHandClosed = false;
 let lightTargetPos = new THREE.Vector3(0, 0, 3);
 let jointsLeft = [], jointsRight = [];
+
+// Stockage des données des morceaux pour l'explosion
 let fragments = [];
 
 function init3D() {
-    const loaderTex = new THREE.TextureLoader();
-    const envMap = loaderTex.load('https://raw.githubusercontent.com/bobbyestafett/Gesture/main/wooden_studio_09_2k.jpg');
+    // 1. CHARGEMENT DE L'ENVIRONNEMENT
+    const rgbeLoader = new THREE.TextureLoader();
+    // Utilisation d'une image compatible Three.js pour tester si le lien GitHub bug
+    const envMap = rgbeLoader.load('https://raw.githubusercontent.com/BobbyEstafett/Gesture/main/wooden_studio_09_2k.jpg');
     envMap.mapping = THREE.EquirectangularReflectionMapping;
 
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 5;
+    camera.position.z = 5; // On commence directement à 5
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
+    // LUMIÈRES
     pointLight = new THREE.PointLight(0xffffff, 20, 20);
     pointLight.position.set(0, 0, 3);
     scene.add(pointLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-    // SHADERMATERIAL STANDARD (Plus robuste que RawShader)
+    // SHADER CRYSTAL AMÉLIORÉ
     crystalMaterial = new THREE.ShaderMaterial({
-        extensions: { derivatives: true },
+        extensions: { 
+            derivatives: true // C'est CECI qui remplace le #extension problématique
+        },
         uniforms: {
             time: { value: 0 },
-            deformation: { value: 0 },
-            uEnvMap: { value: envMap },
-            lightPos: { value: new THREE.Vector3(0, 0, 3) }
+            lightPos: { value: new THREE.Vector3(0, 0, 3) },
+            uEnvMap: { value: envMap }
         },
         vertexShader: `
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
+            varying vec3 vViewDir;
             void main() {
                 vec4 worldPosition = modelMatrix * vec4(position, 1.0);
                 vWorldPosition = worldPosition.xyz;
-                vNormal = normalize(normalMatrix * normal);
+                vNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
+                vViewDir = normalize(worldPosition.xyz - cameraPosition);
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
         `,
         fragmentShader: `
-            #extension GL_OES_standard_derivatives : enable
             precision highp float;
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
             uniform float time;
-            uniform float deformation;
             uniform sampler2D uEnvMap;
             uniform vec3 lightPos;
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying vec3 vViewDir;
 
             void main() {
-                // Vecteur de vue
-                vec3 viewDir = normalize(vWorldPosition - cameraPosition);
-                
-                // Flat Shading (Facettes)
+                // dFdx est maintenant disponible car activé via 'extensions' plus haut
                 vec3 fdx = dFdx(vWorldPosition);
                 vec3 fdy = dFdy(vWorldPosition);
                 vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // Motif Digital Scanlines
-                vec2 uvPattern = vNormal.xy * 2.0 + vWorldPosition.xz * 0.5;
-                float lines = sin(uvPattern.y * 30.0 + time * 2.0) * 0.5 + 0.5;
-                float scan = smoothstep(0.4, 0.5, lines);
+                // Réfraction
+                vec3 refrR = refract(vViewDir, faceNormal, 0.82);
+                vec3 refrG = refract(vViewDir, faceNormal, 0.84);
+                vec3 refrB = refract(vViewDir, faceNormal, 0.86);
 
-                // Réfraction Chromatique (Effet Rainbow)
-                vec3 refrR = refract(viewDir, faceNormal, 0.82);
-                vec3 refrG = refract(viewDir, faceNormal, 0.85);
-                vec3 refrB = refract(viewDir, faceNormal, 0.88);
-                
-                vec3 colR = 0.5 + 0.5 * cos(time + refrR.zxy * 3.0 + vec3(0.0, 2.0, 4.0));
-                vec3 colG = 0.5 + 0.5 * cos(time + refrG.zxy * 3.0 + vec3(2.0, 4.0, 0.0));
-                vec3 colB = 0.5 + 0.5 * cos(time + refrB.zxy * 3.0 + vec3(4.0, 0.0, 2.0));
-                
-                vec3 baseColor = vec3(colR.r, colG.g, colB.b) * (0.3 + scan * 0.7);
-                
-                // Fresnel & Brillance de surface
-                float fresnel = pow(1.0 + dot(viewDir, faceNormal), 3.0);
-                vec3 finalColor = mix(baseColor, vec3(0.5, 0.8, 1.0), fresnel * 0.5);
+                // Mapping UV
+                vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.2831 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.1415);
+                vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.2831 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.1415);
+                vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.2831 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.1415);
 
-                // Éclat Spéculaire
+                vec3 color;
+                color.r = texture2D(uEnvMap, uvR).r;
+                color.g = texture2D(uEnvMap, uvG).g;
+                color.b = texture2D(uEnvMap, uvB).b;
+
+                // Si noir (image non chargée), bleu cristal de secours
+                if(length(color) < 0.01) color = vec3(0.1, 0.25, 0.45);
+
+                // Réflexion
+                vec3 reflectDir = reflect(vViewDir, faceNormal);
+                vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.2831 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.1415);
+                vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
+
+                float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 5.0);
+                vec3 finalCol = mix(color, reflection, fresnel * 0.5);
+                
+                // Specular (Brillance)
                 vec3 lightDir = normalize(lightPos - vWorldPosition);
-                float spec = pow(max(dot(reflect(-lightDir, faceNormal), -viewDir), 0.0), 32.0);
-
-                gl_FragColor = vec4(finalColor + spec * (1.0 + deformation), 0.95);
+                float spec = pow(max(dot(reflect(-lightDir, faceNormal), -vViewDir), 0.0), 32.0);
+                
+                gl_FragColor = vec4(finalCol + spec * 0.5, 1.0);
             }
         `,
         transparent: true
@@ -98,22 +110,26 @@ function init3D() {
     const loader = new THREE.GLTFLoader();
     loader.load('crystal.glb', (gltf) => {
         object3D = gltf.scene;
+        const box = new THREE.Box3().setFromObject(object3D);
+        const center = box.getCenter(new THREE.Vector3());
+        object3D.position.sub(center);
+
         fragments = [];
         object3D.traverse(c => {
             if(c.isMesh) {
                 c.material = crystalMaterial;
-                fragments.push({ 
-                    mesh: c, 
-                    originalPos: c.position.clone(), 
-                    originalRot: c.rotation.clone(), 
-                    explodeDir: c.position.clone().normalize() 
+                fragments.push({
+                    mesh: c,
+                    originalPos: c.position.clone(),
+                    originalRot: c.rotation.clone(),
+                    explodeDir: c.position.clone().normalize()
                 });
             }
         });
         object3D.scale.set(1.5, 1.5, 1.5);
         scene.add(object3D);
-    }, undefined, () => {
-        // Fallback Group
+    }, undefined, (error) => {
+        // Fallback Sphere si le GLB ne charge pas
         object3D = new THREE.Group();
         for(let i=0; i<20; i++) {
             let m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), crystalMaterial);
@@ -133,67 +149,107 @@ function init3D() {
 
 function onResults(results) {
     [jointsLeft, jointsRight].forEach(list => list.forEach(j => j.visible = false));
+
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         results.multiHandLandmarks.forEach((lm, i) => {
             const isRight = results.multiHandedness[i].label === 'Right';
             const targetJoints = isRight ? jointsRight : jointsLeft;
+            
+            // Affichage des points
             lm.forEach((p, idx) => {
                 targetJoints[idx].position.set((p.x-0.5)*10, -(p.y-0.5)*8, -p.z*5);
                 targetJoints[idx].visible = true;
             });
+
             if (isRight) {
+                // Main Droite : Contrôle de la lumière (inchangé)
                 lightTargetPos.x = (lm[9].x - 0.5) * 12;
                 lightTargetPos.y = -(lm[9].y - 0.5) * 10;
             } else {
-                let curled = 0;
-                [8, 12, 16, 20].forEach((tip, idx) => {
-                    const base = [5, 9, 13, 17][idx];
-                    if (Math.hypot(lm[tip].x - lm[0].x, lm[tip].y - lm[0].y) < Math.hypot(lm[base].x - lm[0].x, lm[base].y - lm[0].y)) curled++;
+                // --- DETECTION DU POING GAUCHE ROBUSTE ---
+                // On vérifie si les 4 doigts longs sont courbés
+                // Index: 8, Majeur: 12, Annulaire: 16, Auriculaire: 20
+                const fingerTips = [8, 12, 16, 20];
+                const fingerBases = [5, 9, 13, 17]; // Articulations de base
+                
+                let curledFingers = 0;
+                fingerTips.forEach((tipIdx, index) => {
+                    const tip = lm[tipIdx];
+                    const base = lm[fingerBases[index]];
+                    const wrist = lm[0];
+
+                    // Si le bout du doigt est plus proche du poignet que sa propre base
+                    // alors le doigt est considéré comme plié (curl)
+                    const distTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+                    const distBase = Math.hypot(base.x - wrist.x, base.y - wrist.y);
+                    
+                    if (distTip < distBase) curledFingers++;
                 });
-                isLeftHandClosed = curled >= 3;
+
+                // On considère le poing fermé si au moins 3 doigts sur 4 sont pliés
+                // C'est beaucoup plus stable que la distance simple !
+                isLeftHandClosed = (curledFingers >= 3);
+                
+                if(lStat) lStat.innerText = isLeftHandClosed ? "FRACTURE" : "STABLE";
             }
         });
     } else {
         isLeftHandClosed = false;
+        lightTargetPos.set(0, 0, 3);
     }
 }
 
 function animate() {
     requestAnimationFrame(animate);
-
+    
     smoothDeformation += ((isLeftHandClosed ? 1.0 : 0.0) - smoothDeformation) * 0.05;
 
+    // Caméra
     if (camera) {
-        camera.position.z += (5 + (smoothDeformation * 2.5) - camera.position.z) * 0.05;
+        const targetZ = 5 + (smoothDeformation * 2.0); 
+        camera.position.z += (targetZ - camera.position.z) * 0.05;
     }
 
-    if (crystalMaterial && crystalMaterial.uniforms) {
-        crystalMaterial.uniforms.time.value += 0.015;
-        crystalMaterial.uniforms.deformation.value = smoothDeformation;
-        if (pointLight) {
-            pointLight.position.lerp(lightTargetPos, 0.1);
-            crystalMaterial.uniforms.lightPos.value.copy(pointLight.position);
-        }
+    // Lumière
+    if (pointLight) {
+        pointLight.position.lerp(lightTargetPos, 0.1);
+        crystalMaterial.uniforms.lightPos.value.copy(pointLight.position);
     }
 
+    // SCATTER
     fragments.forEach(f => {
-        // Multiplicateur 1.5 pour l'éclatement visible
-        const tPos = new THREE.Vector3().copy(f.originalPos).addScaledVector(f.explodeDir, smoothDeformation * 1.5);
-        f.mesh.position.lerp(tPos, 0.1);
-        
-        const t = crystalMaterial.uniforms.time.value;
-        f.mesh.rotation.x += (f.originalRot.x + (smoothDeformation * Math.sin(t * 2.0 + f.originalPos.x) * 1.5) - f.mesh.rotation.x) * 0.1;
-        f.mesh.rotation.z += (f.originalRot.z + (smoothDeformation * Math.cos(t * 2.0 + f.originalPos.y) * 1.5) - f.mesh.rotation.z) * 0.1;
+        const targetX = f.originalPos.x + (f.explodeDir.x * smoothDeformation * 0.2);
+        const targetY = f.originalPos.y + (f.explodeDir.y * smoothDeformation * 0.2);
+        const targetZ = f.originalPos.z + (f.explodeDir.z * smoothDeformation * 0.2);
+
+        f.mesh.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.1);
+
+        const time = crystalMaterial.uniforms.time.value;
+        const rotOffsetX = smoothDeformation * Math.sin(time * 2.0 + f.originalPos.x) * 1.5;
+        const rotOffsetZ = smoothDeformation * Math.cos(time * 2.0 + f.originalPos.y) * 1.5;
+
+        // On crée un Euler cible pour interpoler proprement
+        f.mesh.rotation.x += (f.originalRot.x + rotOffsetX - f.mesh.rotation.x) * 0.1;
+        f.mesh.rotation.z += (f.originalRot.z + rotOffsetZ - f.mesh.rotation.z) * 0.1;
     });
 
+    crystalMaterial.uniforms.time.value += 0.01;
     if (object3D) object3D.rotation.y += 0.002;
+    
     renderer.render(scene, camera);
 }
 
 init3D();
 animate();
 
+// MediaPipe
 const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
 hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 hands.onResults(onResults);
 new Camera(videoElement, { onFrame: async () => { await hands.send({image: videoElement}); }, width: 1280, height: 720 }).start();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
