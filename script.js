@@ -71,6 +71,21 @@ precision highp float;
                 vec3 fdy = dFdy(vWorldPosition);
                 vec3 faceNormal = normalize(cross(fdx, fdy));
 
+                // 1. Calcul de la différence entre normale lisse et normale de face
+                // Plus le résultat est proche de 1, plus on est au centre d'une face.
+                // Plus il descend, plus on est proche d'une arête vive.
+                float edge = dot(vNormal, faceNormal);
+
+                // 2. On accentue le contraste pour ne garder qu'un trait fin
+                // On inverse avec (1.0 - ...) pour que l'arête soit blanche (1.0)
+                float edgeMask = 1.0 - smoothstep(0.8, 0.95, edge);
+
+                // 3. On définit une couleur pour l'arête (ex: Bleu Néon)
+                vec3 edgeColor = vec3(0.0, 1.0, 1.0); 
+
+                // 4. On l'ajoute au résultat final juste avant le gl_FragColor
+                vec3 finalColWithEdges = finalCol + (edgeColor * edgeMask * 2.0);
+
                 // Réfraction
                 vec3 refrR = refract(vViewDir, faceNormal, 0.82);
                 vec3 refrG = refract(vViewDir, faceNormal, 0.84);
