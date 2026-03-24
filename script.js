@@ -15,7 +15,7 @@ let fragments = [];
 function init3D() {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 5;
+    camera.position.z = 2;
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -178,7 +178,7 @@ function animate() {
     // 2. AUTO-ZOOM : La caméra recule quand ça éclate
     // Position par défaut = 5. Position éclatée = 8.
     if (camera) {
-        const targetZ = 5 + (smoothDeformation * 5.0); 
+        const targetZ = 5 + (smoothDeformation * 2.0); 
         camera.position.z += (targetZ - camera.position.z) * 0.05;
     }
 
