@@ -36,11 +36,13 @@ function init3D() {
 
     // SHADER CRYSTAL AMÉLIORÉ
     crystalMaterial = new THREE.ShaderMaterial({
+        extensions: { 
+            derivatives: true // C'est CECI qui remplace le #extension problématique
+        },
         uniforms: {
             time: { value: 0 },
             lightPos: { value: new THREE.Vector3(0, 0, 3) },
-            uEnvMap: { value: envMap },
-            uCameraPos: { value: new THREE.Vector3() }
+            uEnvMap: { value: envMap }
         },
         vertexShader: `
             varying vec3 vNormal;
@@ -55,7 +57,6 @@ function init3D() {
             }
         `,
         fragmentShader: `
-            #extension GL_OES_standard_derivatives : enable
             precision highp float;
             uniform float time;
             uniform sampler2D uEnvMap;
@@ -65,23 +66,28 @@ function init3D() {
             varying vec3 vViewDir;
 
             void main() {
+                // dFdx est maintenant disponible car activé via 'extensions' plus haut
                 vec3 fdx = dFdx(vWorldPosition);
                 vec3 fdy = dFdy(vWorldPosition);
                 vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // Réfraction Chromatique
+                // Réfraction
                 vec3 refrR = refract(vViewDir, faceNormal, 0.82);
                 vec3 refrG = refract(vViewDir, faceNormal, 0.84);
                 vec3 refrB = refract(vViewDir, faceNormal, 0.86);
 
-                // Mapping UV Sphérique
+                // Mapping UV
                 vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.2831 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.1415);
                 vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.2831 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.1415);
                 vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.2831 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.1415);
 
-                float r = texture2D(uEnvMap, uvR).r;
-                float g = texture2D(uEnvMap, uvG).g;
-                float b = texture2D(uEnvMap, uvB).b;
+                vec3 color;
+                color.r = texture2D(uEnvMap, uvR).r;
+                color.g = texture2D(uEnvMap, uvG).g;
+                color.b = texture2D(uEnvMap, uvB).b;
+
+                // Si noir (image non chargée), bleu cristal de secours
+                if(length(color) < 0.01) color = vec3(0.1, 0.25, 0.45);
 
                 // Réflexion
                 vec3 reflectDir = reflect(vViewDir, faceNormal);
@@ -89,17 +95,16 @@ function init3D() {
                 vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
 
                 float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 5.0);
-                vec3 color = mix(vec3(r, g, b), reflection, fresnel * 0.5);
+                vec3 finalCol = mix(color, reflection, fresnel * 0.5);
                 
-                // Specular
+                // Specular (Brillance)
                 vec3 lightDir = normalize(lightPos - vWorldPosition);
                 float spec = pow(max(dot(reflect(-lightDir, faceNormal), -vViewDir), 0.0), 32.0);
                 
-                gl_FragColor = vec4(color + spec * 0.5, 1.0);
+                gl_FragColor = vec4(finalCol + spec * 0.5, 1.0);
             }
-        `.trim(),
-        transparent: true,
-        extensions: { derivatives: true }
+        `,
+        transparent: true
     });
 
     const loader = new THREE.GLTFLoader();
