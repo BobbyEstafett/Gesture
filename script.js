@@ -29,14 +29,17 @@ function init3D() {
     scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
     // SHADER CRYSTAL (Stable et Performant)
-    crystalMaterial = new THREE.ShaderMaterial({
+crystalMaterial = new THREE.ShaderMaterial({
         uniforms: {
             time: { value: 0 },
+            deformation: { value: 0 },
             lightPos: { value: new THREE.Vector3(0, 0, 3) }
         },
         vertexShader: `
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
+            uniform float time;
+            uniform float deformation;
             void main() {
                 vNormal = normalize(normalMatrix * normal);
                 vec4 worldPos = modelMatrix * vec4(position, 1.0);
@@ -44,42 +47,21 @@ function init3D() {
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
         `,
-        fragmentShader: `#extension GL_OES_standard_derivatives : enable
-            precision highp float;
-            uniform float time;
-            uniform vec3 lightPos;
-            varying vec3 vNormal;
-            varying vec3 vWorldPosition;
-
-            vec3 getFakeEnv(vec3 dir) {
-                float t = time * 0.1;
-                vec3 col = 0.5 + 0.5 * cos(t + dir.xyy * 2.0 + vec3(0,2,4));
-                return col * pow(abs(dir.z), 2.0) * 0.4;
-            }
-
-            void main() {
-                vec3 viewDir = normalize(cameraPosition - vWorldPosition);
-                vec3 lightDir = normalize(lightPos - vWorldPosition);
-                
-                // Calcul des facettes dures
-                vec3 fdx = dFdx(vWorldPosition);
-                vec3 fdy = dFdy(vWorldPosition);
-                vec3 faceNormal = normalize(cross(fdx, fdy));
-
-                vec3 refr = refract(-viewDir, faceNormal, 0.88);
-                vec3 crystalCol = getFakeEnv(refr);
-
-                float spec = pow(max(dot(reflect(-lightDir, faceNormal), viewDir), 0.0), 64.0);
-                float fresnel = pow(1.0 - max(dot(faceNormal, viewDir), 0.0), 3.0);
-                
-                vec3 finalCol = crystalCol + (vec3(0.5, 0.8, 1.0) * fresnel * 1.5);
-                finalCol += vec3(spec) * 2.0;
-
-                gl_FragColor = vec4(finalCol, 0.95);
-            }
-        `.trim(),
-        transparent: true,
-        extensions: { derivatives: true }
+        fragmentShader: [
+            'precision highp float;',
+            'uniform float time;',
+            'uniform float deformation;',
+            'uniform vec3 lightPos;',
+            'varying vec3 vNormal;',
+            'varying vec3 vWorldPosition;',
+            'void main() {',
+            '  vec3 viewDir = normalize(cameraPosition - vWorldPosition);',
+            '  float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 3.0);',
+            '  vec3 color = mix(vec3(0.1, 0.4, 0.8), vec3(0.8, 0.2, 1.0), deformation);',
+            '  gl_FragColor = vec4(color + (fresnel * 0.5), 0.9);',
+            '}'
+        ].join('\n'),
+        transparent: true
     });
 
     const loader = new THREE.GLTFLoader();
