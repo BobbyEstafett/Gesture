@@ -36,111 +36,75 @@ function init3D() {
 
     // SHADER CRYSTAL AMÉLIORÉ
     // SHADER "DIGITAL GLITCH CRYSTAL"
-    crystalMaterial = new THREE.ShaderMaterial({
-        extensions: { 
-            derivatives: true // Indispensable pour les facettes nettes
-        },
+    crystalMaterial = new THREE.RawShaderMaterial({
         uniforms: {
             time: { value: 0 },
             deformation: { value: 0 },
-            lightPos: { value: new THREE.Vector3(0, 0, 3) },
-            uEnvMap: { value: envMap }
+            uEnvMap: { value: envMap },
+            projectionMatrix: { value: camera.projectionMatrix },
+            modelViewMatrix: { value: new THREE.Matrix4() }, // Sera mis à jour par Three.js
+            cameraPosition: { value: camera.position }
         },
         vertexShader: `
+            precision highp float;
+            attribute vec3 position;
+            attribute vec3 normal;
+            uniform mat4 modelViewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform mat4 modelMatrix;
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
-            varying vec3 vViewDir;
-            uniform float time;
             
             void main() {
-                // Pas de déformation Vertex ici pour garder les morceaux nets (Scatter)
-                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                vWorldPosition = worldPosition.xyz;
-                vNormal = normalize(modelMatrix * vec4(normal, 0.0)).xyz;
-                vViewDir = normalize(worldPosition.xyz - cameraPosition);
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                vWorldPosition = worldPos.xyz;
+                vNormal = normalize(mat3(modelMatrix) * normal);
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
         `,
         fragmentShader: `
             precision highp float;
+            #extension GL_OES_standard_derivatives : enable
+
             uniform float time;
+            uniform float deformation;
             uniform sampler2D uEnvMap;
-            uniform vec3 lightPos;
-            uniform float deformation; // Utilisation de la main pour le glitch
+            uniform vec3 cameraPosition;
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
-            varying vec3 vViewDir;
-
-            // Fonction pour générer le motif de lignes/grilles (Glitch Pattern)
-            float glitchPattern(vec2 uv, float t) {
-                // Lignes de scan
-                float line = sin(uv.y * 30.0 + t) * 0.5 + 0.5;
-                line += sin(uv.x * 60.0 - t * 2.0) * 0.2;
-                
-                // Grille de hachage
-                float grid = fract(uv.x * 20.0) * fract(uv.y * 20.0);
-                grid = smoothstep(0.0, 0.1, grid); // Rendre la grille nette
-                
-                // Mélange et Glitch selon la main
-                float p = mix(line, grid, 0.5);
-                p += deformation * 0.5 * (sin(t*10.0 + uv.y * 100.0) * 0.5 + 0.5); // Intensification si main fermée
-                
-                return p * 0.8;
-            }
-
-            // Simule des reflets colorés internes (Rainbow Intern)
-            vec3 getFakeRainbow(vec3 dir, float pattern) {
-                float t = time * 0.2;
-                // La couleur de base change selon la direction et le motif
-                vec3 col = 0.5 + 0.5 * cos(t + dir.xyy * 4.0 + vec3(0,2,4));
-                
-                // On applique le motif de glitch
-                return col * pow(pattern, 2.0) * 0.7;
-            }
 
             void main() {
-                // 1. FLAT SHADING NET (L'aspect taillé)
+                vec3 viewDir = normalize(vWorldPosition - cameraPosition);
+                
+                // 1. FACETTES (Effet taillé de l'image)
                 vec3 fdx = dFdx(vWorldPosition);
                 vec3 fdy = dFdy(vWorldPosition);
                 vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // 2. GÉNÉRATION DU MOTIF GLITCH
-                // On utilise les normales et la position pour les UV internes
-                vec2 internalUV = vNormal.xy * 2.0 + vWorldPosition.xz * 0.5;
-                float pattern = glitchPattern(internalUV, time * 0.5);
-
-                // 3. RÉFRACTION CHROMATIQUE EXTRÊME
-                // On augmente un peu l'aberration pour l'effet prisme
-                vec3 refrR = refract(vViewDir, faceNormal, 0.82);
-                vec3 refrG = refract(vViewDir, faceNormal, 0.84);
-                vec3 refrB = refract(vViewDir, faceNormal, 0.86);
-
-                // Lecture de notre faux environnement interne (Rainbow Glitch)
-                vec3 crystalR = getFakeRainbow(refrR, pattern);
-                vec3 crystalG = getFakeRainbow(refrG, pattern);
-                vec3 crystalB = getFakeRainbow(refrB, pattern);
-                vec3 finalCrystalCol = vec3(crystalR.r, crystalG.g, crystalB.b);
-
-                // 4. RÉFLEXION EXTERNE (Cubemap discrète)
-                vec3 reflectDir = reflect(vViewDir, faceNormal);
-                vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.2831 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.1415);
-                vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
-
-                // 5. BRILLANCE ET FRESNEL (Contour arc-en-ciel)
-                float spec = pow(max(dot(reflect(-lightDir, faceNormal), vViewDir), 0.0), 32.0);
-                float fresnel = pow(1.0 - max(dot(faceNormal, viewDir), 0.0), 2.5);
+                // 2. MOTIF DIGITAL (Les lignes de ton image)
+                vec2 uv = vNormal.xy * 2.0 + vWorldPosition.xz * 0.5;
+                float lines = sin(uv.y * 40.0 + time * 2.0) * 0.5 + 0.5;
+                float scan = smoothstep(0.4, 0.5, lines);
                 
-                // Contour irisé
-                vec3 rainbow = 0.5 + 0.5 * cos(time + vNormal.xyx + vec3(0,2,4));
+                // 3. RÉFRACTION ARC-EN-CIEL (Chromatic Aberration)
+                vec3 refrR = refract(viewDir, faceNormal, 0.82);
+                vec3 refrG = refract(viewDir, faceNormal, 0.85);
+                vec3 refrB = refract(viewDir, faceNormal, 0.88);
                 
-                // ASSEMBLAGE FINAL
-                vec3 color = finalCrystalCol; // Base réfraction+glitch
-                color += mix(reflection * fresnel, rainbow * fresnel * 0.5, deformation); // Fresnel Glitch
-                color += vec3(spec); // Point de lumière blanc pur
+                // Couleurs procédurales style "Glitch"
+                vec3 colR = 0.5 + 0.5 * cos(time + refrR.zxy * 3.0 + vec3(0,2,4));
+                vec3 colG = 0.5 + 0.5 * cos(time + refrG.zxy * 3.0 + vec3(2,4,0));
+                vec3 colB = 0.5 + 0.5 * cos(time + refrB.zxy * 3.0 + vec3(4,0,2));
+                
+                vec3 finalColor = vec3(colR.r, colG.g, colB.b) * scan;
 
-                gl_FragColor = vec4(color, 0.95);
+                // 4. REFLETS DE SURFACE
+                float fresnel = pow(1.0 + dot(viewDir, faceNormal), 3.0);
+                finalColor += fresnel * vec3(0.5, 0.8, 1.0) * (1.0 + deformation);
+
+                gl_FragColor = vec4(finalColor, 0.9);
             }
-        `.trim(),
+        `,
         transparent: true
     });
 
