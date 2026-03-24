@@ -191,9 +191,9 @@ function animate() {
     // 4. Animation du SCATTER (Explosion contrôlée)
     fragments.forEach(f => {
     // 1. POSITION (RETOUR PARFAIT)
-    const targetX = f.originalPos.x + (f.explodeDir.x * smoothDeformation * 0.8);
-    const targetY = f.originalPos.y + (f.explodeDir.y * smoothDeformation * 0.8);
-    const targetZ = f.originalPos.z + (f.explodeDir.z * smoothDeformation * 0.8);
+    const targetX = f.originalPos.x + (f.explodeDir.x * smoothDeformation * 0.1);
+    const targetY = f.originalPos.y + (f.explodeDir.y * smoothDeformation * 0.1);
+    const targetZ = f.originalPos.z + (f.explodeDir.z * smoothDeformation * 0.1);
 
     f.mesh.position.x += (targetX - f.mesh.position.x) * 0.1;
     f.mesh.position.y += (targetY - f.mesh.position.y) * 0.1;
