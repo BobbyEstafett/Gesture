@@ -178,7 +178,7 @@ function animate() {
     // 2. AUTO-ZOOM : La caméra recule quand ça éclate
     // Position par défaut = 5. Position éclatée = 8.
     if (camera) {
-        const targetZ = 5 + (smoothDeformation * 3.0); 
+        const targetZ = 5 + (smoothDeformation * 5.0); 
         camera.position.z += (targetZ - camera.position.z) * 0.05;
     }
 
