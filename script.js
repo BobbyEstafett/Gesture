@@ -198,9 +198,9 @@ function animate() {
 
     // SCATTER
     fragments.forEach(f => {
-        const targetX = f.originalPos.x + (f.explodeDir.x * smoothDeformation * 1.5);
-        const targetY = f.originalPos.y + (f.explodeDir.y * smoothDeformation * 1.5);
-        const targetZ = f.originalPos.z + (f.explodeDir.z * smoothDeformation * 1.5);
+        const targetX = f.originalPos.x + (f.explodeDir.x * smoothDeformation * 0.2);
+        const targetY = f.originalPos.y + (f.explodeDir.y * smoothDeformation * 0.2);
+        const targetZ = f.originalPos.z + (f.explodeDir.z * smoothDeformation * 0.2);
 
         f.mesh.position.lerp(new THREE.Vector3(targetX, targetY, targetZ), 0.1);
 
