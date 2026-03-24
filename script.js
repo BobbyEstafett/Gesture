@@ -14,7 +14,7 @@ let fragments = [];
 
 function init3D() {
     const rgbeLoader = new THREE.TextureLoader();
-const envMap = rgbeLoader.load('https://raw.githubusercontent.com/BobbyEstafett/Gesture/main/wooden_studio_09_2k.hdr'); // Exemple de nuit étoilée
+const envMap = rgbeLoader.load('https://raw.githubusercontent.com/BobbyEstafett/Gesture/main/wooden_studio_09_2k.jpg'); // Exemple de nuit étoilée
 envMap.mapping = THREE.EquirectangularReflectionMapping;
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
