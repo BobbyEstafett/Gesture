@@ -37,14 +37,15 @@ function init3D() {
     // SHADER CRYSTAL AMÉLIORÉ
     // SHADER "DIGITAL GLITCH CRYSTAL"
     crystalMaterial = new THREE.RawShaderMaterial({
-        uniforms: {
-            time: { value: 0 },
-            deformation: { value: 0 },
-            uEnvMap: { value: envMap },
-            projectionMatrix: { value: camera.projectionMatrix },
-            modelViewMatrix: { value: new THREE.Matrix4() }, // Sera mis à jour par Three.js
-            cameraPosition: { value: camera.position }
-        },
+    uniforms: {
+        time: { value: 0 },
+        deformation: { value: 0 },
+        uEnvMap: { value: envMap },
+        lightPos: { value: new THREE.Vector3(0, 0, 3) }, // AJOUTE CETTE LIGNE
+        projectionMatrix: { value: camera.projectionMatrix },
+        modelViewMatrix: { value: new THREE.Matrix4() },
+        cameraPosition: { value: camera.position }
+    },
         vertexShader: `
             precision highp float;
             attribute vec3 position;
@@ -69,6 +70,7 @@ function init3D() {
             uniform float time;
             uniform float deformation;
             uniform sampler2D uEnvMap;
+            uniform vec3 lightPos;
             uniform vec3 cameraPosition;
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
