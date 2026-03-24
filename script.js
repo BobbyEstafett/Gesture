@@ -57,7 +57,7 @@ function init3D() {
             }
         `,
         fragmentShader: `
-        precision highp float;
+precision highp float;
             uniform float time;
             uniform sampler2D uEnvMap;
             uniform vec3 lightPos;
@@ -66,51 +66,42 @@ function init3D() {
             varying vec3 vViewDir;
 
             void main() {
-                // 1. FACETTES (Effet taillé)
+                // dFdx est maintenant disponible car activé via 'extensions' plus haut
                 vec3 fdx = dFdx(vWorldPosition);
                 vec3 fdy = dFdy(vWorldPosition);
                 vec3 faceNormal = normalize(cross(fdx, fdy));
 
-                // 2. MOTIF DIGITAL (Scanlines mouvantes)
-                // On crée des lignes basées sur la position verticale et le temps
-                float scanline = sin(vWorldPosition.y * 30.0 - time * 5.0) * 0.5 + 0.5;
-                scanline = pow(scanline, 10.0); // On affine les lignes pour les rendre "laser"
-
-                // 3. RÉFRACTION ARC-EN-CIEL (Chromatic Aberration)
+                // Réfraction
                 vec3 refrR = refract(vViewDir, faceNormal, 0.82);
                 vec3 refrG = refract(vViewDir, faceNormal, 0.84);
                 vec3 refrB = refract(vViewDir, faceNormal, 0.86);
 
-                vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.28 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.14);
-                vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.28 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.14);
-                vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.28 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.14);
+                // Mapping UV
+                vec2 uvR = vec2(atan(refrR.z, refrR.x) / 6.2831 + 0.5, acos(clamp(refrR.y, -1.0, 1.0)) / 3.1415);
+                vec2 uvG = vec2(atan(refrG.z, refrG.x) / 6.2831 + 0.5, acos(clamp(refrG.y, -1.0, 1.0)) / 3.1415);
+                vec2 uvB = vec2(atan(refrB.z, refrB.x) / 6.2831 + 0.5, acos(clamp(refrB.y, -1.0, 1.0)) / 3.1415);
 
-                vec3 crystalCol;
-                crystalCol.r = texture2D(uEnvMap, uvR).r;
-                crystalCol.g = texture2D(uEnvMap, uvG).g;
-                crystalCol.b = texture2D(uEnvMap, uvB).b;
+                vec3 color;
+                color.r = texture2D(uEnvMap, uvR).r;
+                color.g = texture2D(uEnvMap, uvG).g;
+                color.b = texture2D(uEnvMap, uvB).b;
 
-                // 4. EFFET GLITCH (Flashs de couleur néon)
-                vec3 neonColor = vec3(0.0, 0.8, 1.0); // Bleu cyan digital
-                if(length(crystalCol) < 0.1) crystalCol = vec3(0.05, 0.1, 0.2); // Fond sombre
+                // Si noir (image non chargée), bleu cristal de secours
+                if(length(color) < 0.01) color = vec3(0.1, 0.25, 0.45);
 
-                // On mélange le cristal avec les scanlines lumineuses
-                vec3 finalCol = crystalCol + (neonColor * scanline * 2.0);
-
-                // 5. RÉFLEXION & FRESNEL
+                // Réflexion
                 vec3 reflectDir = reflect(vViewDir, faceNormal);
-                vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.28 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.14);
+                vec2 uvReflect = vec2(atan(reflectDir.z, reflectDir.x) / 6.2831 + 0.5, acos(clamp(reflectDir.y, -1.0, 1.0)) / 3.1415);
                 vec3 reflection = texture2D(uEnvMap, uvReflect).rgb;
 
-                float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 4.0);
-                finalCol = mix(finalCol, reflection, fresnel * 0.3);
+                float fresnel = pow(1.0 + dot(vViewDir, faceNormal), 5.0);
+                vec3 finalCol = mix(color, reflection, fresnel * 0.5);
                 
-                // Specular
+                // Specular (Brillance)
                 vec3 lightDir = normalize(lightPos - vWorldPosition);
                 float spec = pow(max(dot(reflect(-lightDir, faceNormal), -vViewDir), 0.0), 32.0);
                 
-                // Sortie finale : On ajoute une légère lueur globale
-                gl_FragColor = vec4(finalCol + spec * 0.8, 1.0);
+                gl_FragColor = vec4(finalCol + spec * 0.5, 1.0);
             }
         `,
         transparent: true
